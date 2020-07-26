@@ -1,0 +1,83 @@
+﻿__NOTOC__
+
+The management protocol is a protocol common to all monitoring boards. It is used for communicating information about the monitoring process, or for information not specific to the monitored protocol.
+
+The management protocol has been given protocol number 0.
+
+The descriptions of the messages here do not indicate remedies or indirect causes of errors. Such information is better suited in the user's manual (or some perhaps in a developer's manual).
+
+So far, the following messages have been defined:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>00h</tt> || [[#Hello | Hello]]
+|-
+| <tt>01h</tt> || [[#Overflow on monitored bus | Overflow on monitored bus]]
+|-
+| <tt>02h</tt> || [[#Malformed packet | Malformed packet]]
+|-
+| <tt>03h</tt> || [[#Chain too long | Chain too long]]
+|-
+| <tt>04h</tt> || [[#Soft overflow on incoming daisy-chain | Soft overflow on incoming daisy-chain]]
+|-
+| <tt>05h</tt> || [[#Hard overflow on incoming daisy-chain | Hard overflow on incoming daisy-chain]]
+|-
+| <tt>06h ...</tt> || [[#Test functions | Test functions]]
+|-
+| <tt>07h ...</tt> || [[#DCC Out-of-band data | DCC Out-of-band data]]
+|}
+
+Multi-byte messages are specified below including the first byte; so, the full Management Frame is in the tables below.
+
+== Hello ==
+
+Sent to indicate that the monitoring board is running. Comparable with a ping. The Hello message provides guidance in checking the connection of boards to the PC.
+
+== Overflow on monitored bus ==
+Sent by a monitoring board when data from the bus it monitors could not be sent to the PC in time, causing it to be discarded. 
+
+== Malformed packet ==
+Sent when a monitoring board received a frame from the daisy-chain which is not a valid frame. The inverse is not true: a forwarded frame is not necessarily a well-formed frame; not much checking is done on it.
+
+The invalid frame itself is dropped.
+
+== Chain too long ==
+Sent by a monitoring board when [[Communication protocol specification#Addressing | incrementing the address]] would make the address 8, which is unrepresentable. This message indicates that there are too many boards connected in the daisy-chain.
+
+== Soft overflow on incoming daisy-chain ==
+Incoming frames are kept in a buffer. When this buffer overflows, this message is sent.
+
+An overflow always means ''at least'' one frame was dropped in the process.
+
+== Hard overflow on incoming daisy-chain ==
+This message indicates that a monitoring board could not process a received byte from the serial connection in time: another byte arrived before it was processed, and one of the two was dropped (by the hardware, not the firmware) to make place for the other.
+
+One or two frames are dropped because there is data missing.
+
+== Test functions ==
+
+These functions are used for testing, and include more data in the frame specifying which test and any parameters of the test. It could be used to let the board communicate debugging data which cannot be sent in the protocol of the monitored bus of the board.
+
+Currently, two test functions are defined:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>06h 00h ''PP''</tt> || [[Communication test]]
+|-
+| <tt>06h 01h ''PP''</tt> || [[Communication forward test]]
+|}
+
+== DCC Out-of-band data ==
+
+The DCC firmware offers the possibility of [[DCC routines design#Filtering on Accessory Decoders | filtering on Accessory Decoder commands]]. Using this message, the firmware signals to the PC that the filter was switched on or off. These two messages are defined:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>07h 00h</tt> || Accessory Decoder filter was switched off
+|-
+| <tt>07h 01h</tt> || Accessory Decoder filter was switched on
+|}
+

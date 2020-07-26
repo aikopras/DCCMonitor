@@ -1,0 +1,146 @@
+﻿{| align="right"
+| __TOC__
+|}
+
+The RS-bus, in contrast to DCC, is not an open specification. [http://www.der-moba.de/index.php/RS-R%C3%BCckmeldebus DerMoba] has reverse-engineered it. I used their information to design and implement an interface to the RS-bus.
+
+== Basic operation ==
+The RS-bus is a bidirectional interface running on 2 wires. It is a master-slave bus where the master polls all slaves in turn for status updates. Only the slaves send data. There is a single master and a variable number of slaves. 
+
+Slaves have a configured address in the range 1-128, and can send the state of up to 8 binary switches each.
+
+The master puts a voltage over the wires of about 6 volts. It does its polling by putting 12 volts pulses on the wires. Slaves respond by making current flow after such a pulse. They send a serial word in [http://en.wikipedia.org/wiki/Asynchronous_start-stop asynchronous start-stop] format (at 4800 bps, 8N1 frameformat). To send a space, they let about 20 mA through. To send a mark, they don't let any current through (roughly).
+
+For details, refer to [http://www.der-moba.de/index.php/RS-R%C3%BCckmeldebus DerMoba].
+
+== Design principle ==
+
+Even though responders work principally by current, examination of the circuit of a master at [http://www.der-moba.de/index.php/RS-R%C3%BCckmeldebus DerMoba] shows that a master actually measures the voltage on the wires (through the transistor T2 in the circuit). Since current measurement makes everything more complicated (the master and the monitor have to be in series, etcetera), I tried to work with voltage measurement as well. Unfortunately, the edges of the signal are not as sharp as with current measurement. It might turn out a current measurement is needed for reliable operation in practice.
+
+== Measurements ==
+I started by connecting the RS-bus to my digital storage oscilloscope. 
+
+Please note that the vertical calibration of my scope is off. The waveforms and timebase are correct; the amplitude is not. The voltages below are a rough indication. The [[Hardware | hardware specification]] lists the ''actual'' trip voltages used.
+
+=== Voltage measurements ===
+
+==== One responder ====
+
+The following measurements are done with one responder (slave) connected to the RS-bus.
+
+<br>
+
+<div align="center" id="overview">
+[[Image:RS-bus scope overview with voltage levels.png]]
+</div>
+
+This image shows an overview of the message sent by the responder. First the pulse train sent by the command station (high voltage is active); when the address of the responder is reached, the responder sends the bit series '0010110001', including start and stop bit. Interpretation: [[RS-bus protocol specification#databyte | "Stand-alone"]] type responder saw E8 become active, rest passive. A 0-bit (space symbol) is sent by current flowing through the responder, causing a drop in voltage on the RS terminals to 5.10 V (on the scope, but it's calibration is completely off!). For a 1-bit (mark symbol), the responder becomes passive again, and the voltage raises to 5.79 V. The 4 levels in the picture are:
+
+{| class="wikitable" id="levels-states"
+! Level !! Situation
+|-
+| align="right" | 11.72 V || command station active (address pulse)
+|-
+| align="right" | 7 V || both command station and responder passive
+|-
+| align="right" | 5.79 V || both command station and responder passive
+|-
+| align="right" | 5.10 V || responder active (space symbol)
+|}
+
+The vertical markers in the scope image are set at the start and end of the start bit.
+
+When the command station becomes passive, the first part of the drop in the voltage is quick, but then it becomes more gradual, and doesn't get the chance to settle before the next pulse is sent.
+Likewise, when the responder becomes passive again, the voltage raise is also gradual; but since the total voltage swing between a space and a mark symbol is much smaller, the voltage does almost settle.
+In both cases, an active state causes a steep slope.
+I suppose that, given enough time, the 7 V voltage in the picture would in the end settle at 5.79 V.
+
+<br>
+
+<div align="center" id="first-3rd">
+[[Image: RS-bus scope 3rd bit.png]]
+</div>
+
+This image is zoomed in on the 3rd bit (a 1-bit in between 0-bits). It turns out that the voltage has quite jagged edges; perhaps because of the current source compensating? The edges were quite different between measurements; apparently it depends on several factors.
+
+The vertical markers are around the 3rd bitperiod, the horizontal markers indicate the voltage rise after &frac14;th of a bit period.
+
+<br>
+
+<div align="center">
+[[Image: RS-bus scope bits 5 and 6.png]]
+</div>
+
+These are the 5th and 6th bits; both 1-bits. They show how the voltage settles some more if it is given two bit-times to do so.
+
+==== Multiple responders ====
+
+To see the effect on the waveform of connecting multiple responders , I took a few more pictures of the 3rd bit with different numbers of responders attached. Note how there are hardly any edges even with one responder, quite unlike the [[#first-3rd | first measurement]] above!
+
+{| border="0"
+| [[Image: RS-bus scope 3rd bit multi-1.png]]
+| [[Image: RS-bus scope 3rd bit multi-2.png]]
+| [[Image: RS-bus scope 3rd bit multi-5.png]]
+|-
+| One responder || Two responders || Five responders
+|}
+
+Perhaps the jagged edges get worse with more responders. I am not sure. 
+
+The [[#levels-states | state]] where both command station and responders are passive is probably the state that is most affected by the number of responders; the other two are driven quite actively by either the master or a responder.
+
+=== Current measurements ===
+
+The following current measurements are done by measuring the voltage over a 10 &Omega; resistor in series between the master and the responders.
+
+<br>
+
+<div align="center">
+[[Image: RS-bus scope current 1 responder.png]]
+</div>
+
+This image is the current measurement of the waveform that corresponds to the [[#overview | overview picture]] in the voltage measurement, with a smaller timebase (it is "zoomed in"). One responder is connected. Since each responder draws 3 mA current from the command station pulses, you can see a small squarewave during the address pulses. When the responder sends a space symbol, a nice squarewave can be seen corresponding to 20 mA. When it sends a mark, it neatly drops back to 0 again. A much cleaner signal, but obviously also a much lower voltage swing, only 200 mV with a 10 &Omega; resistor.
+
+The horizontal markers are on either side of the start bit.
+
+<br>
+
+<div align="center">
+[[Image: RS-bus scope current 5 responders.png]]
+</div>
+
+This is the same waveform but with 5 responders connected. The 3 mA drawn by each responder obviously adds up. This is also the reason why voltage measurement would be required as well if current measurement were done. One would use the voltage measurement to detect the master pulses. During such a pulse, a current measured should not be interpreted as a responder sending a space. When there is a substantial current, but the master is not sending an address pulse, then apparently it ''is'' a responder.
+
+The 10 &Omega; resistor did not cause any problems for the master in my setup. It is probably low enough to not distort the communication.
+
+== Implemementation ==
+
+I have chosen to use only voltage measurements. This is done with two simple comparators with some added hysteresis for stability (about 20 mV). The threshold for the address pulse measurement is not critical, and about 9 volts. The threshold for measuring the responses is very critical, and experimentally determined.
+
+<br>
+<div align="center">
+[[Image: RS-bus scope with thresholds.png]]
+</div>
+
+This image shows the 3rd bit in voltage measurement again, with the horizontal markers set at the upper and lower thresholds. When the signal goes below the lower threshold, the output of the comparator goes low, if it goes above the upper threshold, the output of the comparator goes high (it functions as a Schmitt trigger).
+
+The two comparators are connected to two external interrupt lines on the µC. An address pulse will trigger an interrupt, as will a space symbol sent by a responder, such as a start bit.
+
+== Implementing current measurement ==
+
+I will describe what I think is enough to implement current measurement if voltage measurement appears not to suffice.
+
+If a 10 &Omega; resistor is used to measure the current, the resulting voltage is 200 mV on reception of data from a responder. This is probably enough to just feed directly to the comparator, without amplification. Do include some hysteresis on the comparator for stability. The outputs of the comparators can be left just the same, only the firmware will need a few edits.
+
+I think it will work if the interrupt handler for the pulses from the command station (INT0) is changed in the following ways:
+* Make the interrupt trigger on both edges
+* Edge-detect as follows
+** Clear pending INT0 (yes, inside the INT0 handler)
+** ''Then'' read INT0 state
+**: This means that minor oscillation between the edge that triggered the interrupt and the interrupt handler executing is discarded by the handler. Then we read state. If the signal had an edge between the clearing of the pending interrupt and the reading of the state, then that edge will be handled by a new execution of the handler. Fortunately the AVR uses the same synchronization logic for edge detection and reading an I/O-pin, so we know that if we accidentally read back a glitch instead of the stable signal state, at least that glitch also triggered a new interrupt. If you do not understand this last part, disregard it. We focus on the handling of the read value from here on.
+* On a falling edge (pin read back as 0), execute the original interrupt handler, but don't enable INT1 yet. A command station address pulse might trigger INT1 as well. INT1 might have already triggered before this handler is executed, so keep the code clearing state to RS_ADDR that is already in the original interrupt handler, including the TIMER0 disable code.
+* On a rising edge (pin read back as 1), it should clear a pending INT1, enable INT1 and clear the state to RS_ADDR as is done on the falling edge, including disabling TIMER0. This will make INT1 trigger on a startbit and queue the timer. 
+*: It should be noted that INT1 might trigger on the last bit of the command station address pulse. In my setup, responders where real quick with their startbit after the address pulse, so it doesn't matter if it triggers on the end of the address pulse or the start of the startbit since they are basically at the same moment. If this condition does not hold, reception might be impaired. Also note that INT1 triggering on the last bit of the address pulse with no following responder reply will mean the startbit is read as a mark and the system will be back in the RS_ADDR state.
+
+If the responder is not quick enough with its startbit (which I described as "the reception might be impaired"), the current measurement could be much more difficult. You would need some delay mechanism and a filter to know the difference between a command station pulse and a responder sending data.
+

@@ -1,0 +1,68 @@
+﻿== Basics ==
+
+I looked at the Atmel Application Note AVR306 with example code for UART usage. Those (short) routines waste a byte in the buffer, by not allowing the buffer to go completely "full", since that state is indistinguishable from an empty buffer (which is a very typical use of a circular buffer). Because memory is a scarce resource in this design (we need to keep quite a lot available for filtering), I chose to work around this limitation. 
+
+== First UART ==
+
+The first UART is the serial link towards the PC.
+
+Routines were written to transmit data through the first UART at 57k6 bps with 8N1 framestructure. A variable-sized circular buffer was used (size determined at compile time). The UART transmission routine is blocking: it waits for space to become available to write the byte. Only the main loop of the firmware transmits bytes. In the current design, it should always block on  a full buffer, so that is the only mode currently provided by the UART routines.
+
+In the UART transmission case, the interrupt mask bit could be used for detecting the difference between a full and an empty circular buffer, by masking the interrupt when the buffer is empty. To see the difference between full and empty, just look at the interrupt mask bit.
+
+The routine used to queue a byte in the transmit buffer also clears the "Transmit Complete (TXC)" bit of the UART. This bit is used for [[Communication protocol specification#Frame boundaries | Idle Frame]] management by another set of routines, and it is not automatically cleared by the hardware on UART transmission.
+
+Transmission through the UART is interrupt-based: when the UART is ready to receive another byte, an interrupt triggers and provides the next byte from the circular buffer.
+
+A simple non-buffered reception routine for this UART was also included; it might not be used. It should be noted that the ATMega162 has a hardware receive FIFO of 3 bytes. 
+
+== Second UART ==
+
+This is the link connecting to a daisy-chained board behind this board. It's routines are integrated in the communication protocol: part of the processing of incoming frames is done in the interrupt routine. This part is kept simple, and it's purpose is mainly to detect boundaries between frames, or error conditions that can only be detected when receiving a byte. The rest of the processing is done in the main loop, outside interrupt context.
+
+=== Interrupt routine overview ===
+
+Incoming bytes trigger an interrupt. The interrupt routine processes a single byte at a time. Incoming bytes are placed in a circular reception buffer (however, the reception buffer uses a specific format, and does not have a one-to-one correspondence with received bytes). When the interrupt routine detects the start of a new frame, it pushes out the complete previous frame in the buffer. This mechanism ensures that when the main loop reads a byte from the buffer, a complete frame can be read. This is because when the main loop starts sending a frame on the first UART, it needs to complete that frame before it can start a different one. If it already started with an incoming frame on the daisy-chain, it cannot send a frame from it's own monitored bus before the incoming frame finishes. So the start of sending an incoming frame is delayed until the full frame has been received.
+
+The implementation of this circular buffer design means there are actually three buffer pointers: the regular head and tail of the circular buffer, but also a "write position" pointer that indicates where the next byte in the current frame should go. Only the routine filling the buffer (the interrupt routine) has knowledge of this third pointer.
+
+=== Interrupt routine details ===
+
+==== Error codes ====
+
+Because the interrupt routine needs to communicate some error conditions to the frame processing routine, it can put some error codes in the buffer. To distinguish between an error code and a normal frame byte, the structure of the communication protocol frames is used. [[Communication_protocol_specification#Addressing | Remember]] that incoming frames get their address increased while flowing through the daisy-chain. This increasing is done in the main loop. However, the interrupt routine detects incoming frames with address 7. Such a frame cannot be forwarded, since it already has the highest address. The interrupt routine puts an error code "Chain too long" in the circular buffer, and discards the full frame. This way, only frames with addresses in the range 0-6 are communicated to the main loop. Bytes which represent the start of some frame from address 7 become available for error codes (16 possible bytes in total).
+
+==== UART errors ==== 
+
+The interrupt routine checks for errors indicated by the UART hardware. Any erors are reported in an error code in the buffer, and the current frame is discarded, since it can't be correct. In this case, it's possible that '''two frames''' get discarded: if the frame start byte of the next frame was the byte with the error in it, the previous and following frame are discarded in the process, since the routine never notices the start byte.
+
+==== Buffer full ====
+
+Finally, the interrupt routine needs to check whether the circular buffer is already full. Again, this case didn't need a separate bit to distinguish between full and empty. Because the arrival of the frame start byte of the next frame indicates the end of the previous one, the buffer always contains one byte, even if the main loop cannot see that: the previous frame is pushed out, but the frame start byte of the next one occupies the position at the buffer head pointer. The interrupt routine detects "buffer full" by comparing it's internal "write position" pointer to the head pointer; when they are equal, the bufer is full.
+
+The "buffer full" error condition is the only one not represented by an error code in the buffer, for obvious reasons. A dedicated bit is used to keep this condition. It is only set by the interrupt, and it is only cleared by the main loop. Multiple buffer full occurences could be checked and reported by the main loop only once, due to this design. The "buffer full" condition always discards a full frame (or two, see above), since it can't be intact with one byte missing. This has the nice side-effect that it makes room.
+
+One special condition is checked by the interrupt routine, since it greatly helps debugging when it is reported as it occurs (and the check isn't very intensive anyway). Since it is always a full frame that gets pushed out, it logically follows that the buffer should at least be large enough to hold the largest frame possible (in fact, it should probably be slightly larger because if the timing is unfortunate, the main loop might not be ready to send it out yet, and a new one might be coming in). When the interrupt routine detects a "buffer full" condition, it checks whether the buffer is actually filled completely by just this one frame. In that case, it reports the error "malformed packet" instead of a "buffer full" error condition. A frame that is too large indicates some firmware problem (either a board goes over the maximum, or a buffer isn't big enough to hold the maximum). If it was reported as a full buffer, the user would never notice this problem as the overly large frame got dropped, and he would presume it was a bandwidth or delay problem.
+
+=== Processing done outside interrupt context ===
+
+A routine called inside the main loop handles further processing of an incoming frame and sending it to the PC (or possibly the next board in the daisy-chain).
+
+It checks for the special overflow bit, and if it has been set by the interrupt routine, a [[Management protocol specification#Soft overflow on incoming daisy-chain | Management protocol]] frame is sent indicating the overflow. Normally, only one frame is sent by the routine, but in the case of an overflow, it will also send a frame from the circular buffer, to relieve the pressure on the buffer.
+
+The routine checks if there is data in the circular buffer, and forwards it to the outgoing serial port (remember the outgoing serial port blocks when the buffer is full, so the routine might take significant time to complete).
+
+==== Normal frame processing ====
+
+When a normal frame start byte is retrieved from the buffer, it's address is increased and it is sent out. Further bytes inside the frame are forwarded as-is, except for the last byte, which is the parity byte. The address was changed, so the parity is adjusted accordingly. ''No parity checking is done'', this is only done by the PC. Parity errors are supposed to be rare and a significant problem that should be fixed so they no longer occur in normal operation.
+
+When one frame has been sent out, the routine returns. There might be a frame from the monitored bus waiting to be sent out, and forwarded frames and locally generated frames are processes alternately.
+
+==== Idle Frame processing ====
+
+[[Communication protocol specification#Frame boundaries | Idle Frames]] are detected and discarded by the routine. They have already served their purpose of pushing out the previous frame. When an Idle Frame is in order on the outgoing serial line, it will be generated by some other routine, and the need for an outgoing Idle Frame is not linked to the need for the incoming Idle Frame since we also locally generate frames.
+
+==== Error code processing ====
+
+When the routine reads an error code from the buffer (generated by the interrupt routine), the corresponding [[Management protocol specification | Management protocol]] frame is sent out towards the PC, and the routine returns. The Management protocol frames are hard-coded in the routine for processing speed, unlike frame generation for frames with variable data. This means that, should the relevant part of the [[Communication protocol specification | Communication protocol]] ever be changed, this routine will need to be updated to send the correct frames.
+

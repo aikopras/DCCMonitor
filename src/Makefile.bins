@@ -1,0 +1,80 @@
+# This file contains global rules common to all firmware binaries in the project
+
+LIBS=
+
+LDFLAGS=-Wl,-Map,$(PRG).map
+
+elf: $(PRG).elf 
+
+lst: $(PRG).elf.lst
+
+.PHONY: elf lst
+
+# Rule for building the binary
+
+$(PRG).elf: $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+# Rules for disassembly
+
+%.elf.lst: %.elf
+	$(OBJDUMP) -td $< >$@
+
+%.lst: %.o
+	$(OBJDUMP) -rtd $< >$@
+#	$(OBJDUMP) -rtS $< >$@
+
+# Rules for building the .text rom images
+
+text: hex bin srec
+
+hex:  $(PRG).hex 
+bin:  $(PRG).bin
+srec: $(PRG).srec 
+
+.PHONY: text hex bin srec
+
+%.hex: %.elf
+	$(OBJCOPY) -j .text -j .data -O ihex $< $@
+
+%.srec: %.elf
+	$(OBJCOPY) -j .text -j .data -O srec $< $@
+
+%.bin: %.elf
+	$(OBJCOPY) -j .text -j .data -O binary $< $@
+
+# Rules for building the .eeprom rom images
+
+eeprom: ehex ebin esrec
+
+ehex:  $(PRG)_eeprom.hex
+ebin:  $(PRG)_eeprom.bin
+esrec: $(PRG)_eeprom.srec
+
+.PHONY: eeprom ehex ebin esrec
+
+%_eeprom.hex: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O ihex $< $@ \
+	|| { echo empty $@ not generated; exit 0; }
+
+%_eeprom.srec: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O srec $< $@ \
+	|| { echo empty $@ not generated; exit 0; }
+
+%_eeprom.bin: %.elf
+	$(OBJCOPY) -j .eeprom --change-section-lma .eeprom=0 -O binary $< $@ \
+	|| { echo empty $@ not generated; exit 0; }
+
+# Programming
+
+prog: hex
+	avrdude -c USBasp -p m162 -U $(PRG).hex
+# avrdude -c USBasp -p m162 -E noreset -U $(PRG).hex
+
+# Set fuse bits
+
+init-chip:
+	avrdude -c USBasp -p m162 -U hfuse:w:0xd9:m -U lfuse:w:0xff:m
+	
+.PHONY: prog init-chip
+

@@ -1,0 +1,17 @@
+CAM output for current project DCCMonitor.T3001
+Output on 18. Nov 2008, 14:41h
+Current project created using TARGET 13.6.0.37 discover
+Output created using PCBout V13.6.0.37
+Size of PCB: 77.5 mm x 63.3 mm
+
+Description of created files as follows:
+
+DCCMonitor.Bot = 2 = Copper bottom L1   ( *.Bot )
+DCCMonitor.Tool = drill tool list
+DCCMonitor.Drill = Galvanised drills
+DCCMonitor.Outline = 23 = PCB outline   ( *.Outline )
+DCCMonitor.StopBot = 4 = Solder stop mask bottom   ( *.StopBot )
+DCCMonitor.PosiTop = 21 = Placement print top   ( *.PosiTop )
+DCCMonitor.Apr = TARGET 3001! aperture list
+DCCMonitor.Whl = Eagle compatible aperture list
+

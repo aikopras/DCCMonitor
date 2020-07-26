@@ -1,0 +1,83 @@
+﻿[[Image:Schematic 3.png|thumb|Schematic of the hardware (click to download full size version)]]
+
+<div class="majorwarning">Important: Small errors were removed from the schematic</div>
+
+I had accidentally swapped TxD and RxD on the DE-9 connectors. Additionally, in the non-handdrawn schematic I had reversed C2 and omitted the diode that protected against reversing the power supply.
+
+== Building blocks ==
+* Power supply
+* DCC interface
+*: Convert input to acceptable levels for µC. 
+*: Manchester decoding done in software.
+* 2 RS-232 interfaces
+* Atmel ATmega162 microcontroller
+* Reset button
+* Three LEDs and buttons for general usage.
+*: The buttons and LEDs don't serve a function in the current firmware. They come in handy in debugging.
+
+== DCC interface ==
+This was simply literally copied from the OpenDCC project (which in turn got it from http://www.bahn-in-haan.de/). It gets the job done.
+
+The design from Bahn-in-Haan is &copy; 2003,2004 Gerard Clemens <webmaster@bahn-in-haan.de>. I have his permission to use it in my GPL'ed design. Wolfgang Kufer of [http://www.opendcc.de/ OpenDCC] waived his copyright to the changes he made to the original design.
+
+The DCC input is connected to the INT1/ICP3-pin of the processor. The current DCC firmware doesn't use any of the possibilities of the INT1/ICP3 pin. It's just used as a general I/O-pin (more exact, an input pin).
+
+=== Pull-up ===
+
+The design of the DCC interface from the OpenDCC project uses a 10k resistor to pull up the optocoupler's output connected to the µC. I made the mistake to think the value was not critical and only used the internal 20-50k pullup of the µC itself. Later I discovered both values are too high in my design. I now fit a 2k2 resistor to pull up the optocoupler's output.
+
+I began having problems when the µC TxD pin next to the INT1 input pin in the RS-bus design got heavily used: it gave significant crosstalk onto the weakly pulled up input pin. That is when I realised the low pull-up was needed on the optocouplers, also in the DCC design. 
+
+== Other components ==
+
+The rest of the hardware is used in it's default configuration. A MAX232 provides all serial connections and a 7805 stabilizes the power. A diode protects from accidentally reversing the power supply and blowing stuff up.
+
+It should be noted that in the schematic, the serial connectors are labeled DTE-relative. So for the serial out (a female 9-pin sub-D connector), the pin marked "TxD" carries data from the PC to the µC, and "RxD" from µC to PC. This is why the MAX232 "T1out" pin is connected to the "RxD" pin on the DE9 connector.
+
+The µC has a massive 40 pins. I didn't draw them all, just the pins that are actually used.
+
+The µC has internal pull-up resistors, so there are no external pull-ups needed.
+
+== RS-bus interface ==
+[[Image:RS-bus schematic 2.png|thumb|Schematic of the RS-bus hardware (click to download full size version)]]
+
+'''Do not connect the earth of the 12 V applied to the comparators to the earth of your railroad equipment! This will shortcut!''' Use a separate power supply. Your power supply needs to supply a very stable 12 Volts. One way is using an 7812 IC to provide the power.
+
+Most of the RS-bus monitor hardware is identical to the DCC monitor hardware. That is why the schematic is given only for the changed part.
+
+Two optocouplers are used in the same setting as the one in the DCC hardware. The diode across the optocoupler input in the DCC hardware is not needed in the RS-bus hardware, though it does not hurt. One optocoupler is attached to the same µC pin as the DCC optocoupler, the other is connected to the pin next to it, INT0 (pin 12 on the µC).
+
+Two comparators (in one LM393 IC) are used to check the level of the RS-bus signal between the R and S terminals. The comparator trip point for the comparator connected to INT0 is not critical; it is about 9 Volts. The other comparator trip point ''is'' critical. Use the potentiometer to set the trip point. One of the following is acceptable:
+
+* With no connection to the 1M5 resistor: 4,80 V
+* With input terminal R tied to ground: 4,90 V
+* With input terminal R tied to +12V: 4,70 V
+
+These three are not exactly equivalent, but they are within an acceptable range. A few tens of millivolts deviation is okay, but not more than a few.
+
+These values are based purely on observation of the signal on an oscilloscope. If it does not work for you, you will have to connect a scope as well and try to find the correct trip points. The responder sending a 0-bit should be below the lower trip point and the responder sending a 1-bit should be above the upper trip point. The INT1 input pin is the inverted signal sent by the responder. The hysteresis on the input signal was designed to be about +/- 0,1 Volts, but the actual values are slightly different.
+
+Tip: when trying to get the responder signal on the scope connected between R and S, set your scope to trigger on a negative edge. Keep the responders inactive. Slowly change the trigger point of the scope from high to low until the scope is not triggered anymore by the signal shape sent by the command station. Now make a responder send data, and try to get the trigger point of the scope at that level that it ''is'' triggered by the low voltage of the responder but ''not'' by the pulses sent by the command station.
+
+If this method of measurement seems error prone and unreliable in practice, a current measurement for the responder signal could be implemented instead of a voltage measurement. The change to the code is probably minor (it needs to account for the fact that command station pulses can generate a large enough current to register on INT1 as well, so those would have to be discarded by, in a nutshell, comparing the state with INT0).
+
+The comparator normally does not need a bypass capacitor on it's power supply line, but since the power supply is quite far away without any buffer or something similar on the circuit board, I decided to put a 100 nF bypass capacitor next to it, which serves as a bypass for the whole board.
+
+== Printed Circuit Board ==
+
+In the source for version 1.0 of the DCC monitor, a PCB layout is included. The main board holds the µC and the DCC interface, plus a pin header to connect other interfaces. A separate PCB holds the RS-bus interface which can be connected to the main PCB.
+
+When the main PCB is used with a separate interface PCB, you can leave out R1, R2, C7, D1, U3 and KL2, which are only used for interfacing to the DCC bus. You could also make a universal board which has both the DCC and the RS-bus interface; in that case, make sure there is only one pull-up on INT1. My suggestion is to leave out R2 on the RS-bus panel. Electrically, there are no other issues. But you would have to edit the firmwares to somehow make a universal firmware that can be switched to either interpret DCC or RS-bus signals. It is not a very big task.
+
+The pin headers available on the main PCB are:
+
+{| class="wikitable"
+! Header !! Purpose
+|-
+| JP3 || SPI interface for programming the µC
+|-
+| JP4 || Exposes INT0, INT1 and INT2 for connecting other interfaces like the RS-bus
+|-
+| JP5 || Exposes PD4 - PD7 for use as 4 general I/O-pins
+|}
+

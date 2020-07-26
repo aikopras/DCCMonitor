@@ -1,0 +1,17 @@
+# Dependencies in common directory:
+../common/main.o:  ../common/main.c ../common/global.h ../common/uart.h \
+  ../common/comm_proto.h ../common/test_dispatch.h \
+  ../common/timer.h ../common/keys.h
+../common/comm_proto.o: ../common/comm_proto.c ../common/global.h \
+  ../common/uart.h ../common/timer.h ../common/comm_proto.h
+../common/test_comm_proto.o: ../common/test_comm_proto.c \
+  ../common/comm_proto.h ../common/global.h ../common/uart.h \
+  ../common/test_comm_proto.h
+../common/test_comm_forward.o: ../common/test_comm_forward.c \
+  ../common/comm_proto.h ../common/global.h ../common/uart.h \
+  ../common/test_comm_forward.h
+../common/uart.o: ../common/uart.c ../common/global.h ../common/uart.h
+../common/keys.o: ../common/keys.c ../common/keys.h
+../common/test_dispatch.o: ../common/global.h ../common/test_dispatch.c \
+  ../common/test_comm_proto.h ../common/test_comm_forward.h \
+  ../common/test_dispatch.h

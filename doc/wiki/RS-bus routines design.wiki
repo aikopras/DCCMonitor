@@ -1,0 +1,40 @@
+﻿{| align="right"
+| __TOC__
+|}
+
+The RS-bus routines are implemented with a finite state machine to keep track of the different phases of reception and a cicular buffer to store status and data reports to be sent to the PC.
+
+The [[DCC routines design | DCC routines]] were designed to use as little RAM memory as possible, because the DCC data filtering that might be implemented will need as much memory as it can get. For the RS-bus however, this was not necessary. This meant that the design could well use more memory if that made other things simpler or more efficient.
+
+== Circular buffer ==
+
+The circular buffer holds three bytes for every event to be reported to the PC: a status byte, an address byte and a data byte. The status byte is the major discriminator. It indicates either a succesfully received RS-bus transmission to be obtained from the address and data bytes, or an error. Possibly additional information on the error is in the address and data bytes, depending on the specific error.
+
+One position is wasted in the circular buffer on discriminating "buffer full" and "buffer empty" conditions. When the buffer overflows, this is recorded in a separate variable.
+
+== Addressing ==
+
+A finite state machine keeps track of the different phases of reception, starting in the "Idle" state. Normally, this will be followed by the reception of address pulses, starting with the pulse for address 0. Address pulses trigger interrupt 0 of the µC, starting an interrupt handler. A pseudo-Real Time Clock is used to measure the time between successive pulses. The master signals the start of a new sweep of the address space by a larger pause between the address pulses. The difference in the length of the pause is so large that the threshold was chosen rather arbitrarily at 5 milliseconds. If the pause between two pulses is shorter than 5 milliseconds, it is taken as an address pulse for the next address. If it is longer, the next address is address 0.
+
+Since the Real Time Clock is a 16-bit register, overflows of this register need to be taken into account. When the timer overflows twice without any address pulses in between, the finite state machine will progress to the "Idle" state again. This way, address counting will always restart at 0 when the pause between two addresses was so long that the timer overflowed twice. If the overflow was not taken into account, there is a small chance the time between two successive address pulses would accidentally be interpreted as less than 5 milliseconds when in reality it was large enough to have the clock overflow twice.
+
+The Real Time Clock is never reset to 0, so it will overflow every few seconds during normal operation. A single overflow does not interfere with the pause duration calculation since unsigned integer calculations wrap around nicely. 
+
+== Responder data reception ==
+
+When a responder sends a start bit (a space symbol), this will trigger external interrupt 1. The interrupt handler for this interrupt will switch the finite state machine to "Start bit expected". 
+
+Sampling of the [http://en.wikipedia.org/wiki/Asynchronous_start-stop asynchronous start-stop] transmission sent by the responder is done in the middle of every bitperiod.
+
+The interrupt handler starts a timer for half a bitperiod, and disables the interrupt handler. Sampling of the transmission is done through a timer, and the interrupt handler should not be called during reception from a responder. It will later be enabled again when this single transmission is over.
+
+In the "Start bit expected" state, the timer will trigger precisely in the middle of the start bit. The interrupt handler for the timer will check if it is still a valid start bit. If it is not, it was probably a glitch, and the finite state machine goes back to the "Address" state. Otherwise, the next state is "Byte reception". The timer is now set to trigger every bitperiod, again exactly in the middle of the bitperiod.
+
+This way, the timer interrupt handler will clock in all databits, followed by the stop bit. The databyte is put in the circular buffer along with it's address and the "all okay" status, unless the stop bit was wrong, which results in a [[RS-bus protocol specification#Framing error | framing error]].
+
+At any time, if an address pulse is received from the master, this resets the whole process and any partially received transmission is simply discarded.
+
+== Addressing errors ==
+
+Normally, the master sends 130 address pulses in every sweep. Normally, no responder will respond to the first (address 0) or the last (address 129) address pulse. If it does, this is is [[RS-bus protocol specification#Error frames | reported as an error]]. If the master sends more than 130 address pulses in one sweep (or at least, that is what the monitoring board seems to have observed), this error is also [[RS-bus protocol specification#Addressing error | reported]], but only once. This is to prevent the board flooding the communication with the PC when this happens every sweep or very often. Obviously, pushing the reset button of the board will cause it to be reported again when it occurs.
+

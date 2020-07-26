@@ -1,0 +1,105 @@
+2008-11-20  Peter Lebbing <peter@digitalbrains.com>
+  Version 1.0
+
+  * : "Version history" blocks removed from the individual files.
+  This Changelog will contain the version number and changes in one central
+  location.
+
+  RS-bus monitor:
+  
+  * : Moved main loop to common so it is shared with dccmon.
+  * rs_proto.c: Added monitor_send() as an alias to rs_send().
+  The new main loop in common calls this function.
+  * rs_receiver.c: rename init_rs() to rs_init().
+  * rs_receiver.c: Added monitor_init() as an alias to rs_init().
+  The new main loop in common calls this function.
+  * rs_receiver.c: sample each bit three times and take the majority value.
+  * rs_receiver.c: Accept only a single byte after an address pulse.
+  This fixes the never ending massive stream of framing errors when the
+  RS-bus is not powered on.
+  * rs_receiver.c (ISR (INT0_vect), ISR (TIMER0_COMP_vect)): Clear pending
+  TIMER0 interrupt to fix race.
+  * rs_receiver.c (rs_init): Bugfix: use correct DDR register.
+  * rs_receiver.c: Documentation fix.
+  * rs_receiver.h: Documentation fix.
+  * Makefile: Added INCLUDE_TESTS.
+  * Makefile: Include Makefile.common earlier because INCLUDE_TESTS is set
+  there.
+
+  DCC monitor:
+
+  * : Moved main loop to common so it is shared with rsmon.
+  * dccmon.h: Added definition for DDR register.
+  * dcc_proto.c: Documentation fix.
+  * dcc_proto.h: Documentation fix.
+  * dcc_proto.c: Added monitor_send() as an alias to dcc_send().
+  * dcc_receiver.c: Use uint8_t instead of char. More consistent.
+  * dcc_receiver.c: Use F_CPU in time-related calculations.
+  * dcc_receiver.c: Documentation fix.
+  * dcc_receiver.c (dcc_init): Explicitly set DDR register.
+  * dcc_receiver.c: Added monitor_init() as an alias to dcc_init().
+  * dcc_receiver.c: Use global_prot_var for overflow detection; also try to
+  avoid critical section. Because a critical section now only happens when an
+  overflow has occured (rare), there is no need for the separate overflow
+  storage, which was the previous way of not needing a critical section every
+  time in dcc_overflow_status().
+  * dcc_receiver.h: Documentation fix.
+  * : New files dcc_send_filter.c, dcc_send_filter.h.
+  * Makefile: Added INCLUDE_TESTS.
+  * Makefile: Include Makefile.common earlier because INCLUDE_TESTS is set
+  there.
+  * Makefile: New variant of firmware which filters accessory packets.
+
+  common:
+
+  * comm_proto.c: Only use the highest 8 bits of the RTC to time Idle Frame.
+  Saves a byte that is otherwise rather wasted.
+  * comm_proto.c: Try to avoid critical section in report_overflow().
+  * comm_proto.c, comm_proto.h: Rename start_idle_timer() to comm_start_idle_timer().
+  * comm_proto.c, comm_proto.h: Rename check_idle_timer() to comm_check_idle_timer().
+  * comm_proto.c, comm_proto.h: Added comm_sync_pause().
+  * comm_proto.h: Fix incorrect (incomplete actually) declaration of
+  comm_check_idle_timer().
+  * comm_proto.c (report_overflow, errcode_and_framebyte): Set always_inline.
+  They are really meant to be inlined, regardless of the code size increase.
+  GCC thought differently.
+  * global.h: Added LED definitions and functions (leds_init, led_on,
+  led_off, led_toggle).
+  * global.h: Declare monitor_init() and monitor_send() which are called from
+  main.c.
+  * global.h: Added MANAG_DCC_OOB, MANAG_DCC_NO_ACC_FILTER and
+  MANAG_DCC_ACC_FILTER.
+  * global.h: Add global_var.
+  * global.h: Declare handle_keys().
+  * : New key handling functions in keys.c and keys.h.
+  * : New main loop in main.c.
+  * : New automated test in test_comm_forward.c and test_comm_forward.h.
+  * : New files test_dispatch.c, test_dispatch.h now handle running tests
+  instead of doing this in the main loop.
+  * global.h: Added symbol for MANAG_TEST_FORWARD.
+  * test_comm_proto.c, global.h: Use a symbol for MANAG_TEST_COMM.
+  * test_comm_proto.c, test_comm_proto.h: Use const in declaration of
+  start_comm_test() and do_comm_test().
+  * timer.h: New function div_round_up().
+  * timer.h: New function rtc_period_least().
+  * Makefile: Added INCLUDE_TESTS.
+
+  common/main.c changes when compared to the old rsmon.c or dccmon.c:
+
+  * : No longer define INCLUDE_TESTS; it should be defined in the call from
+  the Makefile.
+  * : Test handling now done in test_dispatch.[ch].
+  * handle_keys: New default key handler function, using the keys for running
+  tests. Can be overridden with a different key handler. If INCLUDE_TESTS is
+  not defined, the function does nothing.
+  * main_loop: Call leds_init() instead of doing it in main_loop().
+  * main_loop: Call comm_sync_pause() every 2 seconds.
+  * main_loop: Call monitor_init() and monitor_send() instead of an explicitly
+  named function like rs_init() and rs_send().
+  * main_loop: Always call key handler every 10 milliseconds instead of only
+  when INCLUDE_TESTS is defined.
+
+  * Makefile.bins: Added init-chip target to set fuse bits.
+  * Makefile.common: Added INCLUDE_TESTS.
+  * Makefile.common: Add -Winline to CFLAGS so we can see whether GCC and I
+  agree on inlining functions or not.

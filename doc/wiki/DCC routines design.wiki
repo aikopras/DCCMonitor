@@ -1,0 +1,119 @@
+﻿== Basics ==
+
+Initially, the plan was to use the Input Capture feature of one of the timers to capture the time that an edge occured on the DCC input signal (and process it in an interrupt). However, the firmware needs to account for jitter on the line. When I began with the project, I thought about this jitter, and reckoned I should make a full-blown filtering system for best signal quality. It had been quite some time since I wrote signal processing routines. Later I realised that it was rather overkill for my application, where the connection to the DCC signal is quite good. Only on edges of the DCC signal should one expect some instability on the µC input pin, but when the signal was well-defined as either high or low, it would no longer cause glitches. However, my filtering DCC reception code could come in handy for people making a decoder for use inside a train, where the poor contact with the rail tracks causes jitter.
+
+My code makes no use of the Input Capture unit or even an external interrupt, it simply polls the input signal. It might be possible to get nice results when the Input Capture unit is combined with a filtering system; it might have a lower CPU load. It is rather complex, though. The CPU load of my routine is acceptable when the µC does not need to do a lot of other tasks, though one should not expect time-critical code to work. The DCC reception routine does take a lot of the CPU time.
+
+The DCC signal is sampled at a high rate and uses a simple software low-pass filter to filter out jitter. The [http://www.opendcc.de OpenDCC] project (also under a GPL license) contains a section{{ref|opendec-sw}} on how DCC decoding is done there. My low-pass filter basically follows that approach, although I use different code.
+
+The sampling is done at a rate of 100 kHz (one sample every 10 µs). The sampled signal is fed through a low-pass filter that basically filters out frequencies above 20 kHz, or, equivalently, pulsewidths below 50 µs.
+
+== Buffer ==
+
+A circular buffer is used to store the DCC packets and push them to the main loop for processing. However, like with the [[UART routines design#Interrupt routine overview | buffer for incoming Communication protocol frames]], full packets are pushed out at once rather than a byte at a time. Again, the reason is that the main loop should be able to read a complete packet as soon as it starts sending out the first byte of the packet. The buffer thus has 3 buffer pointers, the usual head and tail, and a "write position" only known to the interrupt handler which points to the position where the next received DCC byte will be written.
+
+There needs to be a way to separate different DCC packets from one another in the buffer. Therefore, the first byte read from the buffer is actually a length byte, indicating how many following bytes together form one packet. Obviously, the length is only known at the end of a received DCC packet, and only then is this first byte definitively known. As soon as the DCC packet ends, and only then, is the head buffer pointer increased so the length byte and the full packet become available to the main loop. 
+
+=== Buffer full ===
+
+The buffer is not allowed to go completely full: buffer head and tail pointer being equal means the buffer is empty. The one byte in the buffer that appears to be wasted by this is not actually wasted. As soon as another packet starts on the DCC bus, the byte is used by the interrupt handler to keep information in (what the information is depends on the state of the finite state machine described [[#DCC packet decoding | below]]).
+
+If the buffer overflows, a dedicated bit is set by the interrupt handler. This bit is read by the routine that sends data to the PC, and if it's set, a [[Management protocol specification#Soft overflow on incoming daisy-chain | notification]] is sent to the PC and the bit is cleared.
+
+== Choosing thresholds ==
+
+''It should be noted that a 0 or 1 comprises 2 pulses with a certain length. When I say "a 1-pulse", I actually mean half of a 1. Likewise for the 0.''
+
+The DCC specification gives very precise numbers when it comes to what pulsewidths should be accepted as a valid DCC signal. However, when the signal is filtered, the resulting pulses can be slightly skewed. The low-pass filter already filters out high frequency pulses, and therefore there is no lower boundary on what the DCC routine accepts as a 1-pulse (the shorter of the two pulses 1 and 0). The shortest 0-pulse and the longest 1-pulse (90 µs and 64 µs respectively) come quite close to eachother using the sampling resolution of 10 µs. Jitter can easily add or subtract 10 µs from the measured pulselength. Using exact numbers, it seems logical to set the split exactly in the middle between the two extremes, which is <math>64+\frac{90-64}{2}=77</math> µs. Rounded to 10's of microseconds, this means anything shorter than 80 µs is accepted as half a 1, and anything of 80 µs or longer as half a 0. This seems acceptable: a spike prolonging a 1-pulse with one period will still accept the pulse as such, and a spike shortening a 0-pulse with one period will be accepted as a 0-pulse. With the given resolution, no better can be achieved. 
+
+There are two parts of the DCC signal specification that I chose to ignore in order to save storage space and processing time. 
+
+First off, the specification states that the pulselengths of the two halves of a 1 can only differ very slightly. I don't think that's very important for the decoding. Maybe it has something to do with the possibility of having different bus signals on the same wires, but I don't see a rationale in the specification. Because jitter can skew the filtered readings, it might even be better to not check this at all. 
+
+Secondly, the specification states a maximum period for the 0-pulse. Checking this would mean 16-bit arithmetic in the interrupt handler, which is a relatively large burden. As far as I can think of, the only implication is that the monitoring board will decode packets from non-compliant Digital Command Stations which are dropped by compliant other decoders. I think the emphasis of this project is to discover relationships between commands and more general what commands are sent, not to test compliance of the signal shape of the Digital Command Station. So far enough consessions have been done already to make this board insuitable for that test. The whole approach of using a single, simple optocoupler for measuring the signal already makes a good compliance test impossible. So in my opinion, the maximum pulselength check is superfluous.
+
+== Interrupt routine size ==
+
+The whole DCC packet decoding is done in the interrupt handler, which is quite bulky. GCC must compile it with optimization set on, or the processor will be stuck processing the interrupt all of the time. I think I do the processing quite efficiently, but I didn't use optimization tweaks like using Special Function Registers as data storage (this idea was taken from the OpenDCC code). I might do that later, however, the processing speed is already high enough. It's also something that might become a problem when other parts of the firmware start using some function that was hitherto unused, and was therefore assigned as storage in the DCC routine. It would give very odd errors when a Special Function Register that is being used in the normal way is also used as storage for the DCC routine. When the developer does not realise the DCC routine uses it, he might be at a loss finding the cause.
+
+== The filter ==
+
+The last 5 samples (taken every 10 µs) are kept in a shift register, and a majority vote on those decides the level of the filtered signal. This is the same approach as the OpenDCC supersampling code. However, the edge detection is done differently. I think my technique is more efficient, but it looks like the OpenDCC code I looked at was incomplete, so I couldn't do a real-world comparison{{ref|kufer}}.
+
+The OpenDCC code first computes the current level, and compares this with the stored last level to detect an edge. But we are not particularly interested in the level itself, only in the edge. Edge detection can be done differently. Each time a bit is shifted into the register, another bit is shifted out. When those bits are equal, there is no change in the number of 1's (or 0's respectively) in the shift register. So likewise, there is no way that an edge has just occured. Only when the bit shifted in has a different value than the one shifted out, do we have the possibility of an edge. Because only one bit is shifted in and out, the number of 1's in the shift register can only increase or decrease by 1. In a table:
+
+{| class="wikitable"
+! Shifted<br>out bit
+! Shifted<br> in bit
+! Old # 1's !! New # 1's !! Old level !! New level !! Edge
+|- 
+| 0 || 0 || x || x || y || y || -
+|-
+| 1 || 1 || x || x || y || y || -
+|-
+| rowspan=5 | 0 
+| rowspan=5 | 1
+| 0 || 1 || 0 || 0 || -
+|-
+| 1 || 2 || 0 || 0 || -
+|-
+| 2 || 3 || 0 || 1 || &uarr;
+|-
+| 3 || 4 || 1 || 1 || -
+|-
+| 4 || 5 || 1 || 1 || -
+|-
+| rowspan=5 | 1 
+| rowspan=5 | 0
+| 5 || 4 || 1 || 1 || -
+|-
+| 4 || 3 || 1 || 1 || -
+|-
+| 3 || 2 || 1 || 0 || &darr;
+|-
+| 2 || 1 || 0 || 0 || -
+|-
+| 1 || 0 || 0 || 0 || -
+|}
+
+Only when the number of 1's is decreased from 3 to 2, do we have a negative edge, and only when the number of 1's is increased from 2 to 3, do we have a positive edge. So my approach first looks at the bits shifted in and out, and only when they are different, we adjust the count of the number of 1-bits, and compare that with the bordervalues for an edge. 
+
+When no edge is detected, the routine has completed. When an edge is detected, the length of the pulse between this and the last edge is computed and further processing is done.
+
+== Bit decoding ==
+
+The filter gives us the time that passed between two edges. This is compared to the threshold time that separates 1-bits from 0-bits.
+
+A complete DCC bit consists of two pulses. When the first half is received, it's value is recorded and the routine waits for the second half. When this second half is received, and it matches the first half, a full bit has been received. If they don't match, it is discarded.
+
+The handling of a discarded bit is ''crucial''. Even though the two halves did not match, the second half would still be a valid first half for a next bit! So even though we did not receive a valid bit ''now'', we still check if the next half would make a valid bit in combination with the currently received half. Failing to recognize this little nuance would break reception very badly (as I have experienced myself).
+
+== DCC packet decoding ==
+
+The DCC packet decoding is done with a finite state machine. The states match the packet format of NMRA [http://www.nmra.org/standards/sandrp/consist.html Standard S-9.2] chapter A (General Packet Format). The states which are visited during reception of a DCC packet are:
+
+* Preamble
+*: A series of 1-bits that start any DCC packet. When 10 such bits have been received, we switch to the next state, Leading 0.
+* Leading 0
+*: Waiting for the "Packet Start Bit" which signals the start of the DCC packet data. Here again is a little nuance regarding bit reception: if we initially picked up what was actually the second half of a Preamble bit as a first half, we notice this when this first 0-bit comes. The routine will correctly synchronize to this 0-bit and continue.
+* Databyte
+*: This state corresponds to the "Address Data Byte" or "Data Byte" parts of Standard S-9.2 chapter A. Here the actual data is received and stored.
+* Trailer
+*: This state corresponds to the "Data Byte Start Bit" and "Packet End Bit" parts of Standard S-9.2 chapter A. Depending on the value of the bit, it is either, the former signalling that another Data Byte is following, the latter signalling the end of the packet.
+
+At any time, if a faulty bit is received, the complete packet is cancelled and the new state is Preamble (waiting for a new packet).
+
+When a full packet has been received (Trailer state and a 1-bit received), it's length and full contents are pushed out of the buffer as [[#Buffer | described above]].
+
+== Filtering on Accessory Decoders ==
+
+The turnouts in a railway might be connected to their own, dedicated DCC bus, to which no rails are connected. In such a case, the only interesting commands on that DCC bus are commands to so-called Accessory Decoders. However, commands for trains are generally still sent by the command station, and these clutter the view of that bus. To this end, I have implemented a simple filter in the firmware. When compiled with the correct switch in the Makefile (see the documentation of the source), the firmware will allow you to choose, with a key on the board, whether it should send all DCC data, or just commands to Accessory Decoders. The filter is very simple: Accessory Decoders have their own address range in the DCC protocol. The address range can be determined by just looking at the first byte of a DCC packet. Based on that byte, the command is either sent to the PC or just discarded by the firmware.
+
+A LED provides visual confirmation, however, I have also added a [[Management protocol specification#DCC Out-of-band data | Management Protocol message]] that signals the state of the filter on the PC. 
+
+''Hint:'' If you want your board to always filter on DCC Accessory Decoder packets, replace key 2 with a bridge (i.e., a wire) so it is always pressed. The board will switch to filter mode almost immediately, and only immediately after powerup will you still get a few unfiltered messages.
+
+== Notes and references ==
+# {{note|opendec-sw}} Prinzip des DCC-Empfangs, [http://www.opendcc.de/modell/opendecoder/opendecoder_sw_dcc.html OpenDCC OpenDecoder software]
+# {{note|kufer}} Wolfgang Kufer commented that the necessary additional code to make it work is trivial, but that the routine was too computationally intensive to run on his 8 MHz design, and therefore isn't enabled.
+

@@ -1,0 +1,17 @@
+# This file contains global rules common to all Makefiles in the project
+
+# Define this variable to include tests inm the firmware
+#INCLUDE_TESTS=1
+
+MCU=atmega162
+OPTIMIZE=-O3
+
+CC=avr-gcc
+OBJDUMP=avr-objdump
+OBJCOPY=avr-objcopy
+CFLAGS=-mmcu=$(MCU) -std=gnu99 -Wall -Winline -g $(OPTIMIZE)
+
+ifdef INCLUDE_TESTS
+  CFLAGS += -DINCLUDE_TESTS
+endif
+

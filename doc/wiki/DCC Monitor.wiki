@@ -1,0 +1,84 @@
+﻿Copyright &copy;  2007,2008  Peter Lebbing.
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.2
+or any later version published by the Free Software Foundation;
+with no Invariant Sections, no Front-Cover Texts, and no Back-Cover
+Texts.  A copy of the license is included in the section entitled "[[Project:Copyrights | GNU
+Free Documentation License]]".
+
+
+
+This is the wiki documenting the development of a DCC monitoring board by Peter Lebbing. 
+
+== Finished ==
+
+With the release of v1.0 of the software, I have finished my project, which I did in the context of my study. I will most likely not continue development. In any case, I don't have any railroad hardware myself (I borrowed it), which makes further development quite difficult.
+
+Obviously, it's a GPL'ed project, and it was written with the intention that people will extend it when they need more functionality. So you are very welcome to continue where I left off.
+
+== Goal ==
+The goal of this project is to develop a monitoring system that can aid in debugging problems with a model train system. Currently it can listen on the DCC bus and the RS-bus. 
+
+The DCC bus is the communication bus which sends commands to trains, turnouts and possibly other components. Commands sent over the DCC bus are sent to a PC by a monitoring board, where they can be analysed.
+
+The RS-bus is a communication bus where components can report state changes back to the command station. It includes reports when a train enters or leaves a section, and the orientation of turnouts. Any state reports on the RS-bus are sent to the PC as well.
+
+By combining data from different buses, a relation between the commands and information on the buses can be made, and it might be possible to isolate a fault in a certain component. Without monitoring what is going on, it can be very difficult or perhaps even outright impossible to determine which component in the complex whole is causing certain unwanted behaviour in the system.
+
+A more detailed list of goals can be found [[Goals | here]].
+
+== Specification ==
+The following pages describe the different building blocks that make up the system.
+
+{|
+| [[Hardware]] || A description of the hardware of the monitoring board.
+|-
+| [[Communication protocol specification]] || The lowest comunication layer, upon which all communication between boards and the PC is built.
+|-
+| [[Management protocol specification]] || A protocol common to all boards, regardless of which bus they monitor.
+|-
+| [[DCC protocol specification]] || How DCC data is communicated to the PC.
+|-
+| [[RS-bus protocol specification]] || How RS-bus data is communicated to the PC.
+|}
+
+== Design ==
+These pages describe the design decisions made which led to the specifications and the implementation.
+
+{|
+| [[Hardware design]]
+|-
+| [[Development environment]]
+|- 
+| [[UART routines design]] || Design of the routines handling transfer of serial data.
+|-
+| [[Communication protocol design]]
+|-
+| [[DCC routines design]]
+|-
+| [[RS-bus routines design]]
+|}
+
+== Alternate frame formats ==
+The PC software coming with the firmware is not the main focus of the project, and is thus only documented in the source code. However, to save people the trouble of writing a decoder for the serial communication format, I have included the option to have the supplied PC program output simpler frame formats to feed into your own software. 
+
+{|
+| [[Decoded frame format]]
+|-
+| [[Hex frame format]]
+|}
+
+== Software v1.0 ==
+
+You can download the source for the firmware (version 1.0) [http://wwwhome.ewi.utwente.nl/~lebbing/dccmon-fw-1.0.tar.gz here]. The PC program (version 1.0) is [http://wwwhome.ewi.utwente.nl/~lebbing/dccmon-pc-1.0.tar.gz here].
+
+Alternatively, for those who don't want to install a development environment, you can also download binary images you can flash into the microcontroller [http://wwwhome.ewi.utwente.nl/~lebbing/dccmon-fw-1.0_bin.tar.gz here]. This is purely a set of equivalent binary images in different formats, no documentation or whatsoever. Also, the PC program will still need to be compiled from the source above.
+
+There are two firmwares, one for monitoring the DCC bus and one for monitoring the RS-bus. The DCC monitoring firmware includes the code for [[DCC routines design#Filtering on Accessory Decoders | filtering on Accessory Decoder commands]]; it can be switched on and off with key 2 (connected to PC2 of the µC). Also see the README in the firmware source for more information.
+
+The tests (Makefile switch INCLUDE_TESTS) are also included in the binary firmwares. They can help you in writing your own PC programs, to see if your program correctly handles all those frames. As mentioned a lot in the documentation, the tests require some more in-depth knowledge of the functioning of everything. However, as long as you don't press keys 0 and 1, you will not be bothered by them, which is why I decided to include them for those that want to develop on the PC side, but leave the firmware side as is.
+
+The PC program listens on the serial port connected to the board(s), and decodes any data it gets. DCC decoding is very limited; you are invited to expand it and share your code. Information decoded from the RS-bus is shown as a status report from a certain RS-bus address with active and passive inputs of that RS-bus responder unit. The PC program remembers the current state of a responder and marks any changes in state with stars. This way the user can recognise both the input state change that triggered the state report, and the current state of the other (unchanged) inputs.
+
+The PC program can also output [[#Alternate frame formats | machine-readable formats]] to your own programs, as mentioned above.
+

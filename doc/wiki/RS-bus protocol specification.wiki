@@ -1,0 +1,136 @@
+﻿This page describes the frame format of frames sent to the PC by the RS-bus monitoring board.
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>''AA DD''</tt> || [[#Normal frames | Normal frame]] (range <tt>''AA''</tt>: <tt>00h-7Fh</tt>)
+|- 
+| <tt>80h ''DD''</tt> || [[#Address 0 data | Address 0 data]]
+|-
+| <tt>81h ''DD''</tt> || [[#High address data | High address data]]
+|-
+| <tt>82h ''AA''</tt> || [[#Framing error | Framing error]]
+|-
+| <tt>83h</tt> || [[#Addressing error | Addressing error]]
+|}
+
+All addresses in frames are 0-based, but on the RS-bus addresses are in the range of 1-128. To get the RS-bus address, add 1 to the address in the frame. This is done to have the most significant bit of the first byte in the frame available to signify error frames. Frames where the first byte is in the range 0-127 are [[#Normal frames | normal frames]], the range 128-255 is the start of an [[#Error frames | error frame]].
+
+== Normal frames ==
+
+Normal frames consist of two bytes, address and a byte of data.
+
+{| class="wikitable" 
+! Data !! Meaning
+|-
+| <tt>''AA DD''</tt> || Address <tt>''AA''</tt> reports state <tt>''DD''</tt>
+|}
+
+
+Address ''AA'' is the address of the responder on the RS-bus. The most significant bit is always
+cleared (address range 0-127). The RS-bus uses addresses 1-128, so add 1 tot the address to get the RS-bus responder address.
+
+Data ''DD'' consists of the following bits (MSB first):
+
+<tt>P T1 T0 N D3 D2 D1 D0</tt> where:
+
+{| class="wikitable" id="databyte"
+! Bit(s) !! Meaning
+|-
+| <tt>P</tt> || Bit parity, odd
+|-
+| <tt>T1 TO</tt> || Responder type:
+  {| class="wikitable"
+  | <tt>0 0</tt> || Switching receiver, no responder
+  |-
+  | <tt>0 1</tt> || Switching receiver with responder
+  |-
+  | <tt>1 0</tt> || Stand-alone responder
+  |-
+  | <tt>1 1</tt> || Reserved
+  |}
+|-
+| <tt>N</tt> || Nibble bit: 0 = lower nibble, 1 = higher nibble
+|-
+| <tt>D3..D0</tt> || Input pin state, 0 = passive, 1 = active
+  {| class="wikitable"
+  | <tt>N = 0</tt> || D3..D0 = E4..E1
+  |-
+  | <tt>N = 1</tt> || D3..D0 = E8..E5
+  |}
+|}
+
+The Parity bit makes the total number of 1's in the byte odd. Parity is not checked by the monitoring board; this is up to the PC.
+
+This description of the RS-bus responder data is copied from the [http://www.der-moba.de/index.php/RS-R%C3%BCckmeldebus Der Moba] site. I do not know how a "switching receiver without responder" would ever send a responder byte with the T1&nbsp;T0-bits "<tt>0&nbsp;0</tt>", not having a responder, after all.
+
+The databytes correspond to 4 of the possible 8 input pins of the responder. Apart from sharing an address, they function independently. The input pins on a responder are typically numbered E1 to E8; the correspondence with the bits can be found in the table and depends on the Nibble bit.
+
+RS-bus devices only send data when there is a change; data is sent only once. A transmission error (hopefully detected by the Parity bit) means that state information has been lost; no recovery is possible.
+
+When an RS-bus device is first powered up and connected to the bus, it normally reports it's current state.
+
+== Error frames ==
+
+All error frames start with a byte in the range 128-255 (MSB set).
+
+=== Address 0 data ===
+
+Normal RS-bus addresses lie in the range 1-128, however, it is possible for a responder to send a response for an address outside that range. Should a responder send a response for address 0, this error frame is sent.
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>80h ''DD''</tt> || (Non-existent) address 0 reported data <tt>''DD''</tt>
+|}
+
+Data ''DD'' is defined the same as for [[#Normal frames | normal frames]].
+
+=== High address data ===
+
+Like [[#Address 0 data | Address 0 data]], but for addresses 129 and higher. No distinction is made between possible higher addresses, they are all treated as "too high" and generate this frame. Note however that for addresses higher than 129, the command station would have to send more than 130 address pulses and an [[#Addressing error | Addressing error]] frame has been reported.
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>81h ''DD''</tt> || (Non-existent) address 129 or higher reported data <tt>''DD''</tt>
+|}
+
+Data ''DD'' is defined the same as for [[#Normal frames | normal frames]].
+
+=== Framing error ===
+
+Responders use a transmission format essentially equal to the usual ''asynchronous start-stop'' format used in normal serial transmission (coloquially referred to as "RS232"). Bytes are framed between a "space" (logic 0) startbit and a "mark" (logic 1) stopbit. If the stopbit is received as a "space", this error frame is sent to the PC.
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>82h ''AA''</tt> || RS-bus address ''AA'' sent a byte with a framing error
+|}
+
+Address ''AA'' is 0-based just as in [[#Normal frames | normal frames]], however, two additional values exist:
+
+{| class="wikitable"
+! <tt>''AA''</tt> value !! Meaning
+|-
+| <tt>FFh</tt> || Non-existent address 0
+|-
+| <tt>80h</tt> || Non-existent address 129 or higher
+|}
+
+These special addresses correspond to [[#Address 0 data | Address 0 data]] and [[#High address data | High address data]].
+
+The received databyte with the framing error was discarded since it was damaged. The stopbit is just as much a part of the byte as any other bit, and a wrong stopbit means a very high likelihood the previous bits were wrong as well.
+
+=== Addressing error ===
+
+This error frame is sent to the PC when the monitoring board observed too many address pulses from the command station (the master on the RS-bus). A command station should send 130 address pulses during one scan of the address space, followed by a pause that indicates the start of a new scan. If more than 130 pulses are observed by the monitoring board, this frame is sent.
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>83h</tt> || Addressing error
+|}
+
+This error frame is sent by the monitoring board '''only once''', to prevent flooding the message to the PC when it occurs over and over. After a reset of the monitoring board, it will be sent once again.
+

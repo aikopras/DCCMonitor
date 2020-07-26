@@ -1,0 +1,18 @@
+CAM output for current project RS-bus panel.T3001
+Output on 20. Nov 2008, 16:56h
+Current project created using TARGET 13.6.0.32 discover
+Output created using PCBout V13.6.0.37
+Current Project from TARGET NC version: Commercial use is criminal!
+Size of PCB: 47.7 mm x 54.3 mm
+
+Description of created files as follows:
+
+RS-bus panel.Bot = 2 = Copper bottom L1   ( *.Bot )
+RS-bus panel.Tool = drill tool list
+RS-bus panel.Drill = Galvanised drills
+RS-bus panel.Outline = 23 = PCB outline   ( *.Outline )
+RS-bus panel.StopBot = 4 = Solder stop mask bottom   ( *.StopBot )
+RS-bus panel.PosiTop = 21 = Placement print top   ( *.PosiTop )
+RS-bus panel.Apr = TARGET 3001! aperture list
+RS-bus panel.Whl = Eagle compatible aperture list
+

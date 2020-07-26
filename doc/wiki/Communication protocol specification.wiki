@@ -1,0 +1,126 @@
+﻿{| align="right"
+  | __TOC__
+  |}
+
+The communication protocol is what transfers information from a monitoring board to the PC. Since there are many different buses which could be monitored, all with their own semantics and protocol, the communication protocol is deliberately designed to know as little as possible about the data it is carrying. In other words, it is a layered approach, where the lower layers have no knowledge of the operation of the higher layers.
+
+To be able to define the communication protocol, we need to define the information it carries. This information is defined in an abstract manner: it has no inherent bit-representation. The information carried in the communication protocol is the tuple {&nbsp;address,&nbsp;protocol,&nbsp;data&nbsp;}. It's semantics are as follows:
+{| class="wikitable"
+| address || The address of the monitoring board sending the data. In a daisy-chain, each board has a unique address, which is carried in this field. Range: 0-7.
+|-
+| protocol || A number binding the data to a specific higher-layer protocol. Range: 0-15.
+|-
+| data || A variable-length stream of bytes.
+|}
+
+The data has no meaning to the communication protocol. It's semantics are defined by the protocol number. 
+
+An example of such a protocol would be DCC. By giving the protocol number for DCC in the protocol field, the data field gets the semantics as defined in the DCC monitoring protocol specification, described in the section "[[DCC protocol specification]]". ''However'', to the communication protocol, it does not matter what is in the protocol and data fields, it handles it all the same. This way protocols can be added or modified without changing the communication protocol.
+
+The communication protocol is one-way. It only transfers data from the monitoring boards to the PC.
+
+== Bit representation ==
+
+The tuple { address, protocol, data } is wrapped in a frame and sent towards the PC with error detection code. It is sent as a series of bytes over the RS-232 link. The series of bytes that is the frame is defined as follows:
+{| class="wikitable"
+! bit !! start<br>byte !! data !! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 1 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+| ...
+| 0 <br> x <br> x <br> x <br> x <br> x <br> x <br> x
+|}
+
+a<sub>2</sub>...a<sub>0</sub> is the address of the monitoring board. p<sub>3</sub>...p<sub>0</sub> is the protocol number. 
+
+=== Data representation ===
+
+Data is subsequently defined as follows:
+
+The bytes of data are first stripped of their most significant bit, which is replaced by a 0-bit. The bytes are then sent over the RS-232 link. However, after every seven of such stripped bytes, one byte is sent which has the values of the stripped MSBs of the previous bytes (and a 0-bit in it's own MSB). At the end of the data, any remaining MSB's not yet sent, are sent in one final byte.
+
+If the first byte in the bytestream is represented as the bits b<sub>07</sub>b<sub>06</sub>b<sub>05</sub>b<sub>04</sub>b<sub>03</sub>b<sub>02</sub>b<sub>01</sub>b<sub>00</sub>, the second byte by b<sub>17</sub>...b<sub>10</sub>, and so on (MSB first), nine databytes would be sent as follows:
+
+{| class="wikitable"
+! bit 
+! colspan="7" | data 
+! ''hi-bits'' <br> byte 
+! colspan="2" | data 
+! ''hi-bits'' <br> byte
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 0 <br> b<sub>06</sub> <br> b<sub>05</sub> <br> b<sub>04</sub> <br> b<sub>03</sub> <br> b<sub>02</sub> <br> b<sub>01</sub> <br> b<sub>00</sub>
+| 0 <br> b<sub>16</sub> <br> b<sub>15</sub> <br> b<sub>14</sub> <br> b<sub>13</sub> <br> b<sub>12</sub> <br> b<sub>11</sub> <br> b<sub>10</sub>
+| 0 <br> b<sub>26</sub> <br> b<sub>25</sub> <br> b<sub>24</sub> <br> b<sub>23</sub> <br> b<sub>22</sub> <br> b<sub>21</sub> <br> b<sub>20</sub>
+| 0 <br> b<sub>36</sub> <br> b<sub>35</sub> <br> b<sub>34</sub> <br> b<sub>33</sub> <br> b<sub>32</sub> <br> b<sub>31</sub> <br> b<sub>30</sub>
+| 0 <br> b<sub>46</sub> <br> b<sub>45</sub> <br> b<sub>44</sub> <br> b<sub>43</sub> <br> b<sub>42</sub> <br> b<sub>41</sub> <br> b<sub>40</sub>
+| 0 <br> b<sub>56</sub> <br> b<sub>55</sub> <br> b<sub>54</sub> <br> b<sub>53</sub> <br> b<sub>52</sub> <br> b<sub>51</sub> <br> b<sub>50</sub>
+| 0 <br> b<sub>66</sub> <br> b<sub>65</sub> <br> b<sub>64</sub> <br> b<sub>63</sub> <br> b<sub>62</sub> <br> b<sub>61</sub> <br> b<sub>60</sub>
+
+| 0 <br> b<sub>67</sub> <br> b<sub>57</sub> <br> b<sub>47</sub> <br> b<sub>37</sub> <br> b<sub>27</sub> <br> b<sub>17</sub> <br> b<sub>07</sub>
+
+| 0 <br> b<sub>76</sub> <br> b<sub>75</sub> <br> b<sub>74</sub> <br> b<sub>73</sub> <br> b<sub>72</sub> <br> b<sub>71</sub> <br> b<sub>70</sub>
+| 0 <br> b<sub>86</sub> <br> b<sub>85</sub> <br> b<sub>84</sub> <br> b<sub>83</sub> <br> b<sub>82</sub> <br> b<sub>81</sub> <br> b<sub>80</sub>
+
+| 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> b<sub>87</sub> <br> b<sub>77</sub>
+|}
+
+=== Parity ===
+
+The parity is the XOR of all the previous bytes in the frame, ''including'' the byte with the address and parity information, with the exception that the MSB of the parity byte is always 0.
+
+As can be seen, the only byte which has a 1 in it's MSB is the first byte in the frame, carrying the address and protocol. From this, it is easily seen that the XOR of all the bytes would in fact always have a 1-bit in it's MSB, but it is set to zero on transmission.
+
+== Frame boundaries ==
+
+The receiver detects the end of one frame by receiving the start of the next frame. One special frame is defined, the so-called Idle Frame. It consists of just the byte <tt>80h</tt>. If there is no next frame to send for some time, the Idle Frame can be sent so that the receiver knows it has received the previous frame completely, and can start processing it. If the Idle Frame were not sent, the processing of the previous frame would be delayed until a new frame is sent, which might be undesirable.
+
+== Empty frames ==
+
+A frame without any data consists of two bytes, a frame start byte and parity. It is represented as follows:
+
+{| class="wikitable"
+! bit !! start<br>byte !! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 1 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+| 0 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+|}
+
+The parity is equal to the frame start byte apart from the most significant bit.
+
+== Addressing ==
+
+Every monitoring board sends it's own frames with address 0. However, when a monitoring board receives an incoming frame from a daisy-chained monitoring board behind it, it increases the address of that frame with 1 before forwarding it (and adjusts the parity accordingly). This way, frames sent by the board directly connected to the PC will be received by the PC with address 0. The board connected to that board with address 0, sends it's frames with address 0 as well, but the board connected to the PC increments that address, so the PC receives it with address 1. The board connected to the board with address 1, gets it's address incremented twice as the frame flows towards the PC, and thus gets address 2, and so on.
+
+If more than 8 boards are attached, the board that would increase the address from 7 to the (non-representable) address 8 will drop the frame and send a [[Management protocol specification#Chain too long | Management protocol]] frame (with it's own address) indicating that too many boards are connected. This way, the user can be alerted that he needs to change that.
+
+== An example ==
+
+Suppose a monitoring board would like to send a frame with address 5, protocol number 3 and data "<tt>7Eh 7Fh 80h 81h</tt>" (since it's address is non-zero, it must be a forwarded frame, but this is not relevant). It would send the following bytes:
+
+<tt>D3h 7Eh 7Fh 00h 01h 0Ch 5Fh</tt>
+
+Because the frame would be formed as follows:
+{| class="wikitable"
+! bit 
+! start <br> byte
+! colspan="4" | data 
+! ''hi-bits'' <br> byte 
+! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 1 <br> 1 <br> 0 <br> 1 <br> 0 <br> 0 <br> 1 <br> 1
+| 0 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1 <br> 0
+| 0 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1
+| 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0
+| 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 1
+| 0 <br> 0 <br> 0 <br> 0 <br> <span title="MSB of 81h">'''1'''</span> <br> <span title="MSB of 80h">'''1'''</span> <br> <span title="MSB of 7Fh">'''0'''</span> <br> <span title="MSB of 7Eh">'''0'''</span>
+| 0 <br> 1 <br> 0 <br> 1 <br> 1 <br> 1 <br> 1 <br> 1
+|-
+! byte
+| <tt>D3h</tt> || <tt>7Eh</tt> || <tt>7Fh</tt> || <tt>00h</tt> || <tt>01h</tt> || <tt>0Ch</tt> || <tt>5Fh</tt>
+|}
+
+(hover with your mouse over any of the 4 lower bits of the ''hi-bits'' byte to display a tooltip describing the bit)
+

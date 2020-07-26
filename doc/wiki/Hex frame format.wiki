@@ -1,0 +1,54 @@
+﻿Where the [[Decoded frame format]] is suitable to feed into a program for parsing of the frames as they come in, the Hex frame format is meant to be easy to edit in a text editor, to use only a short period of the capture for further processing. It could be used to automate analysis of the period before an error occured.
+
+After you have saved communications with the command-line option "<tt>-s comm.save</tt>", you could convert the saved file to hex format by:
+<pre>
+dccmon -S comm.hex -f comm.save
+</pre>
+Open <tt>comm.hex</tt> in a text editor, and trim it to the period you need.
+
+Obviously, you could also have the <tt>dccmon</tt> program just output in the hex format:
+<pre>
+dccmon -S - /dev/ttyS0
+</pre>
+
+== The format ==
+For more info on the meaning of the fields, refer to [[Decoded frame format]]. Only the differences are given. Note that there is no [[Decoded frame format#Frame length | Frame length]] field in the Hex format; length is implied by every frame being on a single line of text.
+
+Each frame is one line of output, with the following format (each ''<tt>XX</tt>'' is one byte in hexadecimal, except for the time entry):
+
+<tt>''HH:MM:SS FF AA PP&nbsp;&nbsp;DD DD DD...''</tt>
+
+Note there are two spaces after <tt>PP</tt> to visually separate the data from the metadata.
+
+{| class="wikitable"
+! Element !! Meaning
+|-
+| <tt>''HH:MM:SS''</tt> || The time the frame was received in 24-hour format
+|-
+| <tt>''FF''</tt> || [[#Frame status | Frame status]]
+|-
+| <tt>''AA''</tt> || Board address
+|- 
+| <tt>''PP''</tt> || Frame protocol
+|-
+| <tt>''DD''</tt> || Frame data
+|}
+
+=== Frame status ===
+This is a byte indicating success or failure to receive the frame from the monitoring boards. It can have the following values:
+{| class="wikitable"
+! Value !! Meaning
+|-
+| 00 || Success
+|-
+| fc || Big frame error
+|-
+| fb || Null frame error
+|-
+| fa || Tiny frame error
+|-
+| f9 || Parity error
+|}
+
+In fact, this is the 8-bit representation of the negative numbers given in the [[Decoded frame format#Frame status | Frame status]] of the [[Decoded frame format]].
+

@@ -1,0 +1,45 @@
+﻿This page describes the design decisions made in development of the hardware.
+
+== Building blocks ==
+* RS-232{{ref|rs232}} interface
+*: Should provide both TxD and RxD for possible future usage. Handshaking seems unnecessary. Even in the event that the board could overrrun a slow PC, XON/XOFF is adequate since there is hardly any data going from PC to the board. On the other hand, adding hardware handshaking is easily done (but requires more hardware to convert the TTL- to RS-232-levels).
+* Microcontroller
+*: Personal preference for AVR µC. To be able to keep using the same µC in extended implementations, it should provide:
+** 2 'RS-232' interfaces (for daisy-chaining with bi-directional communication)
+** A rather large amount of memory (for filtering duplicate commands)
+* In general it's nice to have a few buttons and LEDs on a development board, including a reset button for the µC.
+
+== Processor ==
+The ATmega162 was chosen as the µC for the monitoring board. It was chosen for having:
+* 2 'RS-232' ports for easy daisy-chaining. Though it's perfectly possible to only do the output to the PC with RS-232 and daisy-chaining with a different interface (f.e. SPI), using RS-232 throughout allows making a "stateless" design which doesn't care whether it's directly connected to a PC or chained to another board.
+* A large amount of RAM, to be able to do filtering of duplicate DCC commands (in the future).
+And for being reasonably available.
+
+After having chosen a processor, I noticed the [http://www.opendcc.de/ OpenDCC] project also used this µC in one of it's designs. It's a pleasant coincidence, because it helps code portability, and people could use software from both projects combined to implement other functionality.
+
+The µC needs very little peripherals to function. An 11.0592 MHz crystal clocks it. The value was chosen because it allows to drive the RS-232 interface at the exact specified rate in combination with a standard UART in the PC. The other deciding factors where that there is no significant reason to choose a slow crystal in this design, but that the store where components were bought only had an SMD version of a 14.7456 MHz crystal, which is a nuisance to use.
+
+A reset-button, three buttons for general use and three LEDs can simply be directly connected (apart from the resistors for the LEDs).
+
+== DCC interface ==
+This was simply literally copied from the OpenDCC project (which in turn got it from http://www.bahn-in-haan.de/). It gets the job done.
+
+The design from Bahn-in-Haan is &copy; 2003,2004 Gerard Clemens <webmaster@bahn-in-haan.de>. I have his permission to use it in my GPL'ed design. Wolfgang Kufer of [http://www.opendcc.de/ OpenDCC] waived his copyright to the changes he made to the original design.
+
+The input is connected to the INT1/ICP3 pin of the processor. It is a versatile pin that can be used to:
+* trigger an interrupt at an edge (rising, falling, or either of the two configurable),
+* trigger writing a timestamp to a counter register on an edge (either rising or falling configurable), which allows getting the exact time of the edge without stringent timing constraints on the interrupt handler, or
+* simply poll the current state of the input.
+
+The other candidate for this function, INT2/ICP1, misses the feature to trigger on both rising and falling edges, which makes it the lesser option. It would force the interrupt handler to choose an edge to trigger on for the next interrupt, even when it should be called on either one.
+
+Measurements indicated a rising edge triggers the µC when it passes 1.8 Volts. The µC incorporates a Schmitt-Trigger, which helps stabilise the signal some.
+
+The current firmware does not use the versatility of the INT1/ICP3-pin at all; a different DCC reception routine could use it's features if wanted.
+
+== RS-bus interface ==
+This has its [[RS-bus interface design | own page]] due to its size.
+
+== Notes ==
+{{note|rs232}} Technically, [http://en.wikipedia.org/wiki/RS-232 RS-232] refers to electrical and mechanical characteristics only, not characteristics like [http://en.wikipedia.org/wiki/Asynchronous_start-stop asynchronous start-stop] (equivalent to the OSI model physical and data link layers). For brevity, I refer to the whole of the physical interface and standard PC UART operation as RS-232.
+

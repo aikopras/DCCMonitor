@@ -1,0 +1,15 @@
+This is the source for the documentation as it was at the time of release of the
+source bundle. The documentation is a freely accessible wiki, so it could be
+updated since. Keeping a backup copy of the documentation in the source bundle
+is useful for when something happens to the site holding the documentation.
+
+The documentation is accessible at http://dcc.simpleweb.org/
+
+To rebuild the documentation in a similarly structured MediaWiki wiki, simply:
+Edit "Main Page" and copy-paste the text from "Main Page.wiki". Create the real
+main page, "DCC Monitor.wiki". Click on a link in that page to go to another
+page to reconstruct, and copy-paste the text from the similarly named .wiki file
+there, and so on.
+
+Images in .svg format (created in Inkscape) are accompanied by a rasterized
+version for on the wiki. The wiki doesn't allow this format to be uploaded.

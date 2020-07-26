@@ -1,0 +1,35 @@
+﻿DCC protocol data has protocol number 1.
+
+The data sent to the PC is the data of the full DCC frame as specified in NMRA [http://www.nmra.org/standards/sandrp/consist.html Standard S-9.2]. In other words, the Address Data Byte and the Data Bytes, ''including'' the parity byte. Preamble and Start and End Bits are not included. Only one DCC packet is sent in one communication frame; this provides the same demarkation features as the Preamble and Start/End Bits do in the DCC protocol. One byte of data corresponds one-to-one with one byte of DCC data.
+
+DCC parity checking should be done by the PC; the monitoring board does not check parity and forwards everything equally.
+
+== Example ==
+
+The Baseline Packet with the command for the train with DCC address 55 to set it's speed to speedstep 6 in forward direction is:
+
+<tt>37h 74h 43h</tt>
+{| class="wikitable"
+! Byte !! Meaning
+|-
+| <tt>37h</tt> || 7-bit address 55 (37<sub>16</sub> = 55<sub>10</sub>)
+|-
+| <tt>74h</tt> || Forward speedstep 6
+|-
+| <tt>43h</tt> || Parity byte (XOR of previous bytes)
+|}
+
+This is the same example as figure 1 of Standard S-9.2.
+
+This would be sent to the PC as the following frame (by a monitoring board with address 0):
+
+{| class="wikitable"
+| address || 0
+|-
+| protocol || 1
+|-
+| data || <tt>37h 74h 43h</tt>
+|}
+
+Note that this is in the abstract notation introduced in the [[Communication protocol specification]]. It's representation on the wire is irrelevant. Also note that, when the representation on the wire ''is'' considered, there are two parity bytes, one DCC parity, and one communication protocol parity. They serve completely disjunct functions. Communication protocol parity being incorrect means the frame got damaged in transmission from the monitoring board to the PC. DCC parity being incorrect means the DCC packet was incorrectly transferred from the DCC command station to the DCC monitoring board.
+

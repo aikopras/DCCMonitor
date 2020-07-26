@@ -1,0 +1,174 @@
+﻿This page describes the design of the Communication protocol, which is responsible for transferring all information between boards and the PC.
+
+== Features ==
+
+There is a multitude of different types of data that need to be transferred from the boards to the PC. To cater for all the needs, a layered approach is chosen, where the data transport layer has no knowledge of the actual data it transfers. Data is packet-based: one packet holds one message. As is customary in data link layer terminology, the packet is called a ''frame''. The frame header binds a higher layer protocol to the data in the frame. Frames are variably sized.
+
+However, RS-232 is bytestream-based, so some framing has to be devised. To keep the design simple, one-way communication (simplex) is used, from the boards to the PC. If later any communication back to the boards is needed, this can be developed separately. 
+
+RS-232 can relatively easily lose synchronization, which results in the PC receiving garbage from the monitoring board. This is especially apparent when the monitoring board is already transmitting data before it is connected to the PC. Since we start out on the assumption that communication is simplex (only the monitoring board sends), the most simple implementation indeed starts sending data as soon as the device is powered up and connected to an operating DCC bus. Luckily, resynchronizing is as simple as inserting a small waiting period in the stream. For so-called '8N1' operation (8 databits, no parity, 1 stop bit), this silence needs to be 8 bitperiods long at a minimum: with that length, the receiving end will recognise the following start-bit as such even if it was out of sync before. 
+
+This form of desynchronization is dealt with by inserting an 8-bit pause on the outgoing serial line every 2 seconds. Since this pause is 0,14 milliseconds at 57,600 bps, it does not have any impact on throughput, and it restricts the period of garbage to maximally 2 seconds.
+
+More serious is a softer form of desynchronization. Under various circumstances, the PC could lose track of where a frame begins and ends, and be unable to separate the different frames in the bytestream. This will have to be dealt with.
+
+Lastly, it is the intention to be able to daisy-chain monitoring boards to be able to connect several boards to just one serial port on the PC. So the frame header, which already needed to include information on how to interpret the data, will also need to include addressing information. Boards in a daisy-chain need to have a method to get a unique address on that daisy-chain.
+
+== Framing == 
+
+One solution to allow the receiver to separate frames from eachoter, is to reserve a few bytevalues for a special meaning, such as a frame separator. However, the protocol data can contain any bytevalue. In this setup, such values would have to be escaped by the monitoring board, inflating the size of the bytestream. 
+
+Another solution is bi-directional communication, where the PC would instruct the monitoring board to somehow resynchronize. In that case, the PC has to have a way to detect desynchronization. This solution is not chosen because it increases the complexity of the whole much more than the other methods.
+
+A third solution is not reserving special bytevalues, but rather reserve a special bit. Data would have the highest bit set to 0 and special bytes would have it set to 1. However, DCC sends 8-bit data bytes, and since this is very common anyway, other buses might also. For generality, it is a good idea to be able to transfer 8-bit bytes in any case. This means that when a  bit in the 8-bit RS-232 bytes is reserved for a special purpose, the correspondent (most significant) bits of the data in the frame need to be transferred separately.
+
+The solutions with reserved bytes and bits are worked out further and compared.
+
+=== Special bytevalues ===
+A standard approach would be as follows:
+
+By convention, we reserve character <tt>1Bh</tt>, the escape character in ASCII. The following escape sequences could be defined:
+
+{|
+| <tt>1Bh 1Bh</tt> || Literal escape, for using 1Bh inside a frame
+|-
+| <tt>1Bh 00h</tt> || Start of frame
+|}
+
+As an example, assume that a board would like to send a frame with as data the following DCC packet:
+
+{| 
+| <tt>1Bh 7Bh 60h</tt> || Address #27, forward speed step 20, correct error detection byte 
+|}
+
+As mentioned, any <tt>1Bh</tt> in the data will be replaced with <tt>1Bh 1Bh</tt>. So the frame might be sent over RS-232 as:
+
+{|
+| <tt>1Bh 00h 1Bh 1Bh 7Bh 60h</tt>
+|}
+
+It should be noted that there is no frame header yet to include address and protocol specifiers. This will be added [[#Metadata in the protocol | below]].
+
+
+=== Special bit ===
+
+Using this approach, the protocol could be defined as follows:
+
+The highest bit is reserved for bytes with special meaning. Data is sent with the high bit cleared. After 7 such databytes have been sent, a special so-called ''hi-bits'' byte is sent, which contains the highest bits of the previous 7 bytes. The LSB (bit 0) is bit 7 of the first databyte sent, bit 1 is bit 7 of the second, and so on. If the frame length is not a multiple of 7, the last byte contains the high bits of the databytes before it.
+
+Or schematically:
+
+To send 9 databytes, where the first byte is represented by bits b<sub>07</sub>b<sub>06</sub>b<sub>05</sub>b<sub>04</sub>b<sub>03</sub>b<sub>02</sub>b<sub>01</sub>b<sub>00</sub>, the second byte by b<sub>17</sub>...b<sub>10</sub> and so on, the following would be sent as data:
+
+{| class="wikitable"
+! bit 
+! colspan="7" | data 
+! ''hi-bits'' <br> byte 
+! colspan="2" | data 
+! ''hi-bits'' <br> byte
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 0 <br> b<sub>06</sub> <br> b<sub>05</sub> <br> b<sub>04</sub> <br> b<sub>03</sub> <br> b<sub>02</sub> <br> b<sub>01</sub> <br> b<sub>00</sub>
+| 0 <br> b<sub>16</sub> <br> b<sub>15</sub> <br> b<sub>14</sub> <br> b<sub>13</sub> <br> b<sub>12</sub> <br> b<sub>11</sub> <br> b<sub>10</sub>
+| 0 <br> b<sub>26</sub> <br> b<sub>25</sub> <br> b<sub>24</sub> <br> b<sub>23</sub> <br> b<sub>22</sub> <br> b<sub>21</sub> <br> b<sub>20</sub>
+| 0 <br> b<sub>36</sub> <br> b<sub>35</sub> <br> b<sub>34</sub> <br> b<sub>33</sub> <br> b<sub>32</sub> <br> b<sub>31</sub> <br> b<sub>30</sub>
+| 0 <br> b<sub>46</sub> <br> b<sub>45</sub> <br> b<sub>44</sub> <br> b<sub>43</sub> <br> b<sub>42</sub> <br> b<sub>41</sub> <br> b<sub>40</sub>
+| 0 <br> b<sub>56</sub> <br> b<sub>55</sub> <br> b<sub>54</sub> <br> b<sub>53</sub> <br> b<sub>52</sub> <br> b<sub>51</sub> <br> b<sub>50</sub>
+| 0 <br> b<sub>66</sub> <br> b<sub>65</sub> <br> b<sub>64</sub> <br> b<sub>63</sub> <br> b<sub>62</sub> <br> b<sub>61</sub> <br> b<sub>60</sub>
+| 0 <br> b<sub>67</sub> <br> b<sub>57</sub> <br> b<sub>47</sub> <br> b<sub>37</sub> <br> b<sub>27</sub> <br> b<sub>17</sub> <br> b<sub>07</sub>
+| 0 <br> b<sub>76</sub> <br> b<sub>75</sub> <br> b<sub>74</sub> <br> b<sub>73</sub> <br> b<sub>72</sub> <br> b<sub>71</sub> <br> b<sub>70</sub>
+| 0 <br> b<sub>86</sub> <br> b<sub>85</sub> <br> b<sub>84</sub> <br> b<sub>83</sub> <br> b<sub>82</sub> <br> b<sub>81</sub> <br> b<sub>80</sub>
+| 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> 0 <br> b<sub>87</sub> <br> b<sub>77</sub>
+|}
+
+A frame start is signaled by a byte with bit 7 set. The other 7 bits can be used for addressing and protocol pertaining to the frame.
+
+=== Metadata in the protocol ===
+
+To prevent the PC from attempting to decode a frame that was received with errors in it, a parity byte is added at the end of the frame, which is the XOR of all sent bytes in the frame, including metadata, escaping and ''hi-bits''. Frames failing the parity check are discarded by the PC. This is a last fail-safe: it is assumed that under normal operation, data corruption does not take place. If it does, it should be corrected (equipment or cables replaced, for example). Error detection is still included because without it, the symptoms might be so unrecognisable that it is not recognised as faulty equipment or cabling.
+
+The metadata thus defined are address and protocol, indicated by bits inserted at the start of the frame, and parity, sent at the end of a frame.
+
+For the special bytevalue variant, 3 bits of address a<sub>2</sub>...a<sub>0</sub> and 4 bits of protocol p<sub>3</sub>...p<sub>0</sub> are defined, embedded in a new escape-sequence at the start of a frame, making a complete frame:
+
+{| class="wikitable"
+! bit !! <tt>1Bh</tt> !! addr/<br>proto !! data !! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 0 <br> 0 <br> 0 <br> 1 <br> 1 <br> 0 <br> 1 <br> 1
+| 1 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+| ...
+| x <br> x <br> x <br> x <br> x <br> x <br> x <br> x
+|}
+
+The 1 in the MSB of the byte holding address and protocol is chosen so that the special value <tt>1Bh</tt> will never be formed by that byte. This new escape sequence replaces the escape sequence for "Start of frame" above.
+ 
+For the special bit variant, 3 bits of address a<sub>2</sub>...a<sub>0</sub> and 4 bits of protocol p<sub>3</sub>...p<sub>0</sub> are defined, embedded in the frame start byte, making a frame:
+
+{| class="wikitable"
+! bit !! start<br>byte !! data !! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 1 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+| ...
+| 0 <br> x <br> x <br> x <br> x <br> x <br> x <br> x
+|}
+
+Note the 0 in the parity high bit. Although the frame start byte is included in the parity calculation, the high bit of the parity byte is sent as 0. It is easily seen that it is in fact always 1: only the high bit in the frame start byte is set.
+
+The end of one frame is indicated by the start of a new one. However, when there is no next frame any time soon, the sender could send a special frame without any data to signal the end of the last one. This is shown [[#Idle Frame | below]].
+
+== Comparison of protocol variants ==
+
+A comparison in bandwidth usage for a given amount of data shows the following:
+
+When there are seven databytes or less, and the data does not contain any <tt>1Bh</tt> bytes, the special bytevalue and the special bit variants have equal amounts of protocol overhead:
+
+{|
+| <tt>1Bh ''ap'' ''data'' ... ''parity''</tt> || Special bytevalue, ''ap'' = address/protocol byte
+|-
+| <tt>''ap*'' ''data'' ... ''hi-bits'' ''parity''</tt> || Special bit, ''ap*'' = frame start byte with address and protocol data
+|}
+
+Both protocols have 3 bytes of protocol overhead.
+
+When there are more than seven bytes of data, the protocol overhead of the special bytevalue variant remains 3 bytes, but the special bit variant has an additional overhead of 1 byte for every extra 7 bytes.
+
+However, depending on the actual data, the special bytevalue variant can create a lot more overhead than 3 bytes: for every <tt>1Bh</tt> in the frame, another byte overhead is introduced.
+
+At least in DCC, frames are usually smaller than 8 bytes, making the special bit variant the winner in that case. The strongest argument for me to choose for the special bit variant though, is that it has constant overhead independent of the contents of the data. This makes calculations for necessary bandwidth of the connections much easier. So the actual implemented protocol is the special bit variant.
+
+== Idle Frame ==
+
+As said, the start of the next frame signals the end of the previous frame. This has the lowest overhead, maximising the available bandwidth. However, this also means that a frame cannot be parsed until the arrival of the next. To alleviate this problem, a special frame is defined, consisting of solely the byte <tt>80h</tt>. This byte can be sent when there is no next frame available, to trigger processing of the previous one. The implementation sends this byte after a short amount of time without a new frame to send. With a daisy-chain of maximally 8 boards connected to eachother, a frame sent by the last board in a very quiet monitoring system will arrive at roughly 8 times this waiting period: each board sends the frame, then sends nothing during the waiting period, and then sends the Idle Frame. This is why the period is chosen relatively short.
+
+Idle Frames are never forwarded. Each board generates it's own Idle Frames if necessary.
+
+A byte <tt>80h</tt> could also be the start of a frame from address 0, protocol 0. This will become apparent to the receiver when the next byte comes: if it is a frame start byte, it was an Idle Frame, if it is a databyte, it was the frame start byte of a frame with address 0, protocol 0.
+ 
+== Frames without data ==
+
+It should be noted that the logical way to represent a frame with 0 bytes of data is as follows:
+
+{| class="wikitable"
+! bit !! start<br>byte !! parity
+|-
+! 7 <br> 6 <br> 5 <br> 4 <br> 3 <br> 2 <br> 1 <br> 0
+| 1 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+| 0 <br> a<sub>2</sub> <br> a<sub>1</sub> <br> a<sub>0</sub> <br> p<sub>3</sub> <br> p<sub>2</sub> <br> p<sub>1</sub> <br> p<sub>0</sub>
+|}
+
+Since there are no data bytes, there is no need to send a ''hi-bits'' byte either. A frame with zero length thus has a size of 2 bytes on the wire. The address and protocol information is still protected by the parity, as it should be.
+
+DCC doesn't have the concept of an empty frame. It might be none of the protocols eventually implemented have. 
+
+When the communication protocol routines were written, I had not yet thought about frames with zero length. When later I thought about it and whether it might be useful, it turned out the protocol routines already did the right thing in the first place. If special handling would have been necessary, I might very well have decided to not include the possibility to reduce the complexity. Now that it already worked anyway, I decided to document it instead.
+
+== Addressing ==
+
+Addressing is done automatically and implicitly. The topology of the daisy-chain is used to construct the addressing without any configuration.
+
+Every monitoring board sends it's own frames with address 0. However, when a monitoring board receives an incoming frame from a daisy-chained monitoring board behind it, it increases the address of that frame with 1 before forwarding it (and adjusts the parity accordingly). This way, frames sent by the board directly connected to the PC will be received by the PC with address 0. The board connected to that board with address 0, sends it's frames with address 0 as well, but the board connected to the PC increments that address, so the PC receives it with address 1. The board connected to the board with address 1, gets it's address incremented twice as the frame flows towards the PC, and thus gets address 2, and so on.
+
+If more than 8 boards are attached, the board that would increase the address from 7 to the (non-representable) address 8 should drop the frame and send a status message to the PC to alert the user that he has connected to many boards.
+

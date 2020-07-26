@@ -1,0 +1,34 @@
+﻿The Communication forward test tests aspects of the Communication protocol that would be problematic if the test would be run on the monitor board directly connected to the PC. It should therefore only be run on a board that is actually connected with it's outgoing serial line to another board. It currently contains two tests.
+
+When a board wishes to run this test, it sends the following management frame:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>06h 01h ''PP''</tt> || Start communication forward test using protocol number <tt>''PP''</tt> (range: 1-15).
+|}
+
+At the end, the following management frame is sent:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>06h 01h 00h</tt> || Stop communication forward test.
+|}
+
+Almost all of the description of the [[Communication test]] that is not specific to the actual tests applies here as well.
+
+The [[Communication test]] should still also be run on boards connected in a chain; it tests a lot of other interesting aspects.
+
+== "Chain too long" test ==
+
+When more than 8 boards are connected in a daisy-chain, the boards the furthest away cannot send data to the PC, because there are only 8 addresses available. This test sends a bogus frame to the next board that already appears to come from address 7. As described [[Communication protocol specification#Addressing | here]], this should cause the receiving board to generate a [[Management protocol specification#Chain too long | Chain too long]] management frame.
+
+This bogus frame is sent as a frame with protocol 0, the [[Management protocol specification | Management protocol]], and no databytes. Since the frame does not appear to originate at this board, the protocol <tt>''PP''</tt> from above is not used as it could clash with a real frame from address 7 if this test is accidentally run on the board directly connected to the PC. It seems like a better solution (more recognisable to the PC program and the user) than generating a message in some random protocol that could actually be in use by the board with address 7.
+
+== One frame fills the buffer ==
+
+When a monitoring board's buffer for incoming communication overflows, it checks if this is because a single frame filled the complete buffer. If this is the case, it sends a [[Management protocol specification#Malformed packet | Malformed packet]] management frame instead of the ordinary [[Management protocol specification#Soft overflow on incoming daisy-chain | Soft overflow on incoming daisy-chain]]. This is to help users distinguish the obviously malfunctioning communication (the frame is way too big) from line speed saturation.
+
+This test generates such a huge frame to check the logic of the receiver routines.
+

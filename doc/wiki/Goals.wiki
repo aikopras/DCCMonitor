@@ -1,0 +1,28 @@
+﻿== Base implementation ==
+µC board implementing a passive (listen-only) interface to a DCC bus, and a send-only RS-232{{ref|rs232}} interface to a PC.
+
+== Possible extensions ==
+* Other monitored interfaces:
+** X-Bus/XpressNet
+** RS-bus
+
+* Protocol interpreter module on PC.
+*: A basic implementation would just parse each packet as it comes in and display it's meaning on the text console. To reduce display clutter, it could filter out duplicate commands, but this is also a possible feature for the monitoring board.
+* Filter duplicate commands on the monitoring board, to reduce bandwidth usage of the link to the PC.
+* Coupling several monitoring boards together for concurrent monitoring of several buses.
+** Daisy-chaining
+**: Should be a piece of cake. Possible problem: bandwidth of RS-232 bus
+** Other methods?
+* Ethernet interface.
+*: Probably quite complex.
+* USB interface.
+*: Easier than Ethernet, gives more bandwidth than RS-232, and by using an USB-hub, daisy-chains can be made redundant or shorter.
+* Bi-directional communication with PC
+*: Can be introduced when the need arises.
+
+Extensions could be developed in any order.
+
+== Implemented extensions ==
+* RS-bus interface
+* Daisy-chaining
+

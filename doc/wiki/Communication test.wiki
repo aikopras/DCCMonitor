@@ -1,0 +1,40 @@
+﻿The communication test tries to test several aspects of the communication protocol, to uncover programming errors. It is typically a developer's tool, and not meant for general usage.
+
+The test produces constant output. The PC program checks if the received frames are what was intended to be sent. It's a fully automatic test that can be run after changes to parts of the communication code, to test if those changes didn't introduce any errors.
+
+Because this is a test for the communication protocol, it needs a protocol number to itself. It would be impossible to test transmission and reception of frames with zero databytes if all the test frames were encapsulated in [[Management protocol specification#Test functions | a "management protocol" frame with the bytes <tt>06h 00h</tt> at the start of the data]]. However, it seems wasteful to allocate a fixed protocol number to a test that is hardly ever run, and the solution is very simple (although it could be argued it is poor design). When a board wishes to run the communication test, it sends the following management protocol frame:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>06h 00h ''PP''</tt> || Start communication test using protocol number <tt>''PP''</tt> (range: 1-15).
+|}
+
+This signals to the PC it should expect frames with protocol number PP, which should be inspected to see if they contain the data we expect them to have. An obvious choice for protocol number is one that normally isn't sent by the monitoring board; for example, a board that monitors the RS-bus could choose the DCC protocol number for the test, but it would be a poor choice for a board that monitors the DCC bus. By choosing a different protocol number, the test could be run during actually monitoring a bus, which can be a useful environment to run the test in (interaction between different routines in the firmware using common resources). Obviously, currently, with only a few protocol numbers defined, it makes even more sense to use a free protocol number.
+
+At the end of the test, the following management protocol frame is sent to the PC:
+
+{| class="wikitable"
+! Data !! Meaning
+|-
+| <tt>06h 00h 00h</tt> || Stop communication test.
+|}
+
+On reception of this frame, the PC can check whether it has received all frames (otherwise, it could go unnoticed that the last frame was dropped), and release the binding of the communication test to the protocol number, if desired.
+
+The test does the following:
+
+* Send frames of all possible sizes; for each size, the highest bit of one databyte is set while the others are cleared; and this in turn for every databyte. This tests reconstruction of databytes which were sent with the MSB cleared by the communication protocol. Thus, the first few frames have the following data: <br><br> <tt>''(empty)''<br> 80h<br> 80h 00h<br> 00h 80h<br> 80h 00h 00h<br> 00h 80h 00h<br> ...</tt>
+
+* Deliberately send malformed frames to test whether the receiver correctly detects the error.
+
+Note that this test is deliberately completely static, to automate the test. If test cases for the communication protocol are added, and the result is no longer constant, the desirable feature of test automation is lost.
+
+== Statefulness ==
+
+The test sends a fixed set of frames to be inspected by the PC for proper reception. However, the test is inherently stateful. Any lost frame means the receiver is out of step with the sender and expects a different next frame than the sender produces. This means lost frames will trigger a load of error messages and a failed test.
+
+The [[Communication protocol specification | communication protocol]] is designed for stateless operation. Any packet can be interpreted without depending on previous packets. Lost packets are not repeated; in fact, the protocol has no feedback whatsoever. To be able to interpret any packet independently, static protocol numbers for higher layer protocols are necessary. 
+
+This test brakes the stateless design. It is a developer's tool that produces incorrect results on lost packets, and the developer should be aware of that and analyse the cause of incorrect results manually. It is therefore my opinion that the use of a dynamic protocol number for the test does not make matters much worse than they already are, and add some saving on protocol numbers. The test will produce strange results if the first management protocol frame introducing the dynamic protocol number was lost: it will try to interpret it with the static definition of the protocol number, which will often be undefined. This is not much worse than the situation where other test protocol frames are lost and trigger error messages. Especially with the deliberate errors at the end of the test, which are indistinguishable from real errors.
+

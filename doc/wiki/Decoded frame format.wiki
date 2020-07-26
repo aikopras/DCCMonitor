@@ -1,0 +1,80 @@
+﻿{| align="right"
+  | __TOC__
+  |}
+
+You can call the PC program of this project in the following fashion:
+<pre>
+dccmon -s - /dev/ttyS0 | mydecoder
+</pre>
+
+The program, dccmon, will output on stdout frames of the format described on this page. Your program, mydecoder, can then parse the contents of the frame and process it to your liking.
+
+The frame format is exactly identical to the format of a communication saved on disk by the dccmon program. The only difference is that dccmon outputs it to stdout instead of a file.
+
+== Frame format ==
+
+The output starts with the literal string "<tt>DCCMON 1.0</tt>", to be able to differentiate between possible future formats and the current one. That string is not followed by newline or a null byte; it is just that exact string, without the quotes.
+
+What follows is a stream of frames, each of which has the following format:
+{| class="wikitable"
+! Byte in frame !! Meaning
+|-
+| 1 || [[#Frame status | Frame status]]
+|-
+| 2 || [[#Board address | Board address]]
+|-
+| 3 || [[#Frame protocol | Frame protocol]]
+|-
+| 4 .. 11 || [[#Frame time | Frame time]]
+|-
+| 12 || [[#Frame length | Frame length]]
+|-
+| 13 ... || [[#Frame data | Frame data]]
+|}
+
+== Frame status ==
+This is a byte indicating success or failure to receive the frame from the monitoring boards. It can have the following values:
+{| class="wikitable"
+! Value !! Meaning
+|-
+| 0 || Success
+|-
+| -4 || [[#Big frame error | Big frame error]]
+|-
+| -5 || [[#Null frame error | Null frame error]]
+|-
+| -6 || [[#Tiny frame error | Tiny frame error]]
+|-
+| -7 || Parity error
+|}
+
+Only with value 0, success, is the rest of the data guaranteed to be meaningful. On error, the other data might give some insight into what happened, but it could be wrong. The most obvious example is the parity error. For the other errors, the frame data might still contain nonsense, although often parts of it will be correct.
+
+=== Big frame error ===
+The frame as received contained more than MAX_FRAME_SIZE bytes. MAX_FRAME_SIZE is currently 12. Note that the [[#Frame length | Frame length]] of this frame will not be more than MAX_FRAME_SIZE under any circumstance.
+
+=== Null frame error ===
+Only a frame start byte was received, no data or parity.
+
+=== Tiny frame error ===
+A frame with data is at least 4 bytes big, including the frame start byte. A frame of 3 bytes was received.
+
+== Board address ==
+
+This is the address of the monitoring board that sent the frame, as defined in the [[Communication protocol specification]]. Range: 0-7.
+
+== Frame protocol ==
+
+This is the protocol of the data following, as defined in the [[Communication protocol specification]]. Range: 0-15.
+
+== Frame time ==
+
+This is the POSIX time the frame was received. It is a big-endian 64-bit unsigned integer, in seconds since Jan 1st 1970 0:00&nbsp;UTC, not counting leap seconds. See the POSIX standard for all details if wanted. Note that the endianness is specified, to keep it platform-independent. This is so that the on-disk format is platform-independent.
+
+== Frame length ==
+
+The length of the following data portion, in bytes. The range is 0-255, but this is the range of ''this'' format. You will not see any frames with more data than MAX_FRAME_LEN bytes. To be able to accomodate future expansion, the range of this format was defined very broad.
+
+== Frame data ==
+[[#Frame length | Frame length]] bytes of frame data, as defined in the abstract tuple in the [[Communication protocol specification]]. So this is explicitly not the bytes as they were sent over the serial communication line, where the highest bits were stripped and sent separately! It has already been recombined.
+

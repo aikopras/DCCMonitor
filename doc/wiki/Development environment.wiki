@@ -1,0 +1,14 @@
+﻿C was chosen as the language to program the µC. Assembly is rather inaccessible to a lot of people in the sense that they do not understand the code well, and it is so detailed that it takes much more time to understand the way a function works. Since the project is supposed to be extended by other people, the code should be reasonably easy to work with for those people.
+
+[http://gcc.gnu.org/ GCC] and [http://www.nongnu.org/avr-libc/ avr-libc] where chosen as development environment because it is a good open-source environment available for anyone and working on many platforms. The specific versions used are GCC 4.1.0 and avr-libc 1.4.6 on a Debian GNU/Linux system. During the development, they were upgraded to GCC 4.3.1 and avr-libc 1.6.2.cvs20080610, and everything kept working.
+
+Using a disassembler, one can check how well the code compiles. I've done this extensively to persuade the compiler to generate the best code it can. Often it could be done quicker in hand-written assembly, but the code is acceptable. Writing hand-optimised routines means the code is less accessible. So far it hasn't been necessary to include hand-written assembly.
+
+The GNU disassembler has the option to intersperse source code with assembly generated from the source. However, at higher levels of optimisation, this doesn't work anymore. I just keep them side by side, manually comparing them.
+
+High levels of optimisation can cause the code size to grow. However, the ATmega162 has plenty of flash ROM, and execution speed is much more important than code size.
+
+I've looked into simulators, but couldn't get one working satisfactorily. I debug using the serial port and some GPIO outputs connected to an oscilloscope.
+
+The µC provides a JTAG port; I have no experience with that, but some might find it useful.
+
