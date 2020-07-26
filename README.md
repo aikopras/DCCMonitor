@@ -8,6 +8,10 @@ Monitoring system to debug potential problems on a DCC digital controlled model 
 * Compatible with the Lenz LAN/USB Interface (23151).
 * Fully open source.
 
+<p align="center">
+  <img src="doc/DCC-Monitor.jpg" title="Hardware">
+</p>
+
 ## Versions
 There are two versions of both monitor hardware and monitor software:
 * The first version of the hardware was developed by Peter Lebbing and allows monitoring of a single DCC- or (via an extension board) RS-bus signal. Multiple of these "single-input" boards can be connected to each other (daisy-chained).
